@@ -67,7 +67,11 @@ class Fly {
   yaw = 0; pitch = 0;
   private dragging = false; private lx = 0; private ly = 0;
   speed = 2.0;
-  constructor(private cam: THREE.PerspectiveCamera, private el: HTMLElement, private onMove: () => void) {
+  private cam: THREE.PerspectiveCamera;
+  private el: HTMLElement;
+  constructor(cam: THREE.PerspectiveCamera, el: HTMLElement, onMove: () => void) {
+    this.cam = cam;
+    this.el = el;
     el.addEventListener('pointerdown', e => { if (!this.enabled) return; this.dragging = true; this.lx = e.clientX; this.ly = e.clientY; el.setPointerCapture(e.pointerId); });
     el.addEventListener('pointermove', e => {
       if (!this.enabled || !this.dragging) return;
@@ -209,7 +213,10 @@ export class Viewer {
   private measures: { a: THREE.Vector3; b: THREE.Vector3; line: THREE.Line; label: HTMLDivElement; dist: number }[] = [];
   private pending: THREE.Vector3 | null = null;
   private pendingMark: THREE.Sprite | null = null;
-  private labelsEl = document.getElementById('labels')!;
+  private get labelsEl(): HTMLElement {
+    return document.getElementById('labels') ?? this.fallbackLabelsEl;
+  }
+  private fallbackLabelsEl = document.createElement('div');
   private dotTex = discTexture('#30aedb');
   private stationTex = discTexture('#f2b544', '#3a2c13');
 
@@ -292,13 +299,22 @@ export class Viewer {
 
     this.resize();
     addEventListener('resize', () => this.resize());
-    canvas.addEventListener('dblclick', e => { clearTimeout(this.stationTimer); this.pickTarget(e.clientX, e.clientY); });
+    const parent = canvas.parentElement;
+    if (parent && parent !== document.body && typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(() => this.resize()).observe(parent);
+    }
+    canvas.addEventListener('dblclick', e => {
+      clearTimeout(this.stationTimer);
+      const r = canvas.getBoundingClientRect();
+      this.pickTarget(e.clientX - r.left, e.clientY - r.top);
+    });
     canvas.addEventListener('pointerdown', e => { this.pdown = (this.tc.enabled && this.tc.axis) ? null : { x: e.clientX, y: e.clientY, t: performance.now() }; });
     canvas.addEventListener('pointerup', e => {
       const d = this.pdown; this.pdown = null;
       if (this.gizmoBusy || (this.tc.enabled && this.tc.axis)) return;
       if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 500) return;
-      this.handleClick(e.clientX, e.clientY);
+      const r = canvas.getBoundingClientRect();
+      this.handleClick(e.clientX - r.left, e.clientY - r.top);
     });
   }
 
@@ -363,7 +379,12 @@ export class Viewer {
     this.movingTimer = window.setTimeout(() => { this.moving = false; this.dirty = true; }, 160);
   }
 
-  resize() { this.resizeTo(innerWidth, innerHeight); }
+  resize() {
+    const p = this.canvas.parentElement;
+    const w = p && p !== document.body ? p.clientWidth : innerWidth;
+    const h = p && p !== document.body ? p.clientHeight : innerHeight;
+    if (w > 0 && h > 0) this.resizeTo(w, h);
+  }
   private resizeTo(w: number, h: number) {
     this.cw = w; this.ch = h;
     this.renderer.setSize(w, h, false);

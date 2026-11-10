@@ -96,8 +96,10 @@ export class MeshView {
   visible = true;
   /** The cloud's transform, kept in step with the point renderer's. */
   model = new THREE.Matrix4();
+  private gl: WebGL2RenderingContext;
 
-  constructor(private gl: WebGL2RenderingContext) {
+  constructor(gl: WebGL2RenderingContext) {
+    this.gl = gl;
     const p = gl.createProgram()!;
     gl.attachShader(p, compile(gl, VS, gl.VERTEX_SHADER));
     gl.attachShader(p, compile(gl, FS, gl.FRAGMENT_SHADER));
