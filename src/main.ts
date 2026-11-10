@@ -170,7 +170,7 @@ function resetForLoad(name: string, keepOthers = false) {
   }
   revealed = viewer.loadedAll > 0 && keepOthers; gotRealLeaf = false; fromCache = false; cropped = false; cacheNote = ''; clearDirty(!keepOthers);
   (document.activeElement as HTMLElement | null)?.blur?.();
-  $('drop').classList.add('hidden'); $('loading').classList.remove('hidden', 'over');
+  $('drop').classList.add('hidden'); $('loading').classList.remove('hidden'); $('loading').classList.add('over');
   $('ld-name').textContent = name; $('ld-stat').textContent = 'opening…'; $('ld-bar').style.width = '0%'; $('err').classList.add('hidden');
   viewer.clear();
   viewer.active.state = blankState();
