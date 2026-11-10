@@ -1,0 +1,1468 @@
+/* @ts-self-types="./e57_wasm.d.ts" */
+
+/**
+ * Neighbourhood analysis driven from a worker. The caller streams in the viewer's own
+ * leaf records, runs one analysis, then pulls back either a per-point number (a scalar
+ * field), a per-point keep mask, or rewritten normals.
+ */
+export class CloudAnalysis {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        CloudAnalysisFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_cloudanalysis_free(ptr, 0);
+    }
+    /**
+     * `model` is the cloud's 4x4 transform in **row-major** order, or empty for identity.
+     * `base` is where this leaf's first point sits in the whole cloud, which is what
+     * decides the survivor of a duplicate pair or of a subsample voxel. A run that holds
+     * the cloud whole can pass the running count and get the same answer.
+     * @param {number} ox
+     * @param {number} oy
+     * @param {number} oz
+     * @param {number} size
+     * @param {Uint8Array} recs
+     * @param {Float32Array} model
+     * @param {number} base
+     */
+    add_leaf(ox, oy, oz, size, recs, model, base) {
+        const ptr0 = passArray8ToWasm0(recs, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF32ToWasm0(model, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.cloudanalysis_add_leaf(this.__wbg_ptr, ox, oy, oz, size, ptr0, len0, ptr1, len1, base);
+    }
+    /**
+     * One leaf of the reference. `stride` keeps 1 in N, for a cloud bigger than the
+     * analyser will hold; `model` is its own row-major 4x4, so both clouds arrive in the
+     * same frame however each of them is transformed on screen.
+     * @param {number} ox
+     * @param {number} oy
+     * @param {number} oz
+     * @param {number} size
+     * @param {Uint8Array} recs
+     * @param {Float32Array} model
+     * @param {number} stride
+     */
+    add_reference_leaf(ox, oy, oz, size, recs, model, stride) {
+        const ptr0 = passArray8ToWasm0(recs, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF32ToWasm0(model, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.cloudanalysis_add_reference_leaf(this.__wbg_ptr, ox, oy, oz, size, ptr0, len0, ptr1, len1, stride);
+    }
+    build() {
+        wasm.cloudanalysis_build(this.__wbg_ptr);
+    }
+    build_reference() {
+        wasm.cloudanalysis_build_reference(this.__wbg_ptr);
+    }
+    /**
+     * @returns {number}
+     */
+    get component_count() {
+        const ret = wasm.cloudanalysis_component_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @param {number} radius
+     * @param {number} min_pts
+     * @param {Function | null} [progress]
+     * @returns {Float32Array}
+     */
+    components(radius, min_pts, progress) {
+        const ret = wasm.cloudanalysis_components(this.__wbg_ptr, radius, min_pts, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @param {number} k
+     * @param {Function | null} [progress]
+     */
+    compute_normals(k, progress) {
+        wasm.cloudanalysis_compute_normals(this.__wbg_ptr, k, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+    }
+    /**
+     * Point-to-plane registration needs planes, so a reference without usable normals
+     * gets them computed here rather than failing or silently falling back.
+     * @param {number} k
+     * @param {Function | null} [progress]
+     */
+    compute_reference_normals(k, progress) {
+        wasm.cloudanalysis_compute_reference_normals(this.__wbg_ptr, k, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+    }
+    /**
+     * @returns {number}
+     */
+    get cut_distance() {
+        const ret = wasm.cloudanalysis_cut_distance(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Distance from every point of this cloud to the nearest triangle of a mesh.
+     *
+     * The mesh arrives in the same frame as the points — the caller has already put it
+     * through both the mesh's and the cloud's transforms — so this is pure geometry.
+     * `signed` reports which side of the surface each point is on, using the triangle's
+     * own facing, which is only meaningful on a consistently wound mesh.
+     * @param {Float32Array} pos
+     * @param {Uint32Array} idx
+     * @param {boolean} signed
+     * @param {number} max_r
+     * @param {Function | null} [progress]
+     * @returns {Float32Array}
+     */
+    distance_to_mesh(pos, idx, signed, max_r, progress) {
+        const ptr0 = passArrayF32ToWasm0(pos, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray32ToWasm0(idx, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.cloudanalysis_distance_to_mesh(this.__wbg_ptr, ptr0, len0, ptr1, len1, signed, max_r, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+        var v3 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v3;
+    }
+    /**
+     * @param {boolean} signed
+     * @param {number} max_r
+     * @param {Function | null} [progress]
+     * @returns {Float32Array}
+     */
+    distance_to_reference(signed, max_r, progress) {
+        const ret = wasm.cloudanalysis_distance_to_reference(this.__wbg_ptr, signed, max_r, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @param {number} tol
+     * @returns {Uint8Array}
+     */
+    duplicates(tol) {
+        const ret = wasm.cloudanalysis_duplicates(this.__wbg_ptr, tol);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * `upto` is how many of the points fed this call answers for, 0 for all of them.
+     * @param {string} name
+     * @param {number} k
+     * @param {number} radius
+     * @param {number} upto
+     * @param {Function | null} [progress]
+     * @returns {Float32Array}
+     */
+    feature(name, k, radius, upto, progress) {
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.cloudanalysis_feature(this.__wbg_ptr, ptr0, len0, k, radius, upto, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+        var v2 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v2;
+    }
+    /**
+     * Run ICP and report what it did, as JSON. `max_dist` is the starting rejection gate
+     * in metres; it tightens to 15% of that as the fit settles.
+     * @param {number} max_iter
+     * @param {number} max_dist
+     * @param {number} sample
+     * @param {Function | null} [progress]
+     * @returns {string}
+     */
+    icp(max_iter, max_dist, sample, progress) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.cloudanalysis_icp(this.__wbg_ptr, max_iter, max_dist, sample, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    invert_normals() {
+        wasm.cloudanalysis_invert_normals(this.__wbg_ptr);
+    }
+    /**
+     * @returns {number}
+     */
+    len() {
+        const ret = wasm.cloudanalysis_len(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get mean_distance() {
+        const ret = wasm.cloudanalysis_mean_distance(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {number} cell
+     */
+    constructor(cell) {
+        const ret = wasm.cloudanalysis_new(cell);
+        this.__wbg_ptr = ret;
+        CloudAnalysisFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * CloudCompare's noise filter, with all of its options: a kNN or a sphere
+     * neighbourhood, a relative (n sigma) or absolute distance threshold, and whether
+     * points with too few neighbours to fit a plane are dropped or kept.
+     * @param {boolean} use_knn
+     * @param {number} knn
+     * @param {number} radius
+     * @param {boolean} use_absolute_error
+     * @param {number} absolute_error
+     * @param {number} n_sigma
+     * @param {boolean} remove_isolated
+     * @param {number} upto
+     * @param {Function | null} [progress]
+     * @returns {Uint8Array}
+     */
+    noise(use_knn, knn, radius, use_absolute_error, absolute_error, n_sigma, remove_isolated, upto, progress) {
+        const ret = wasm.cloudanalysis_noise(this.__wbg_ptr, use_knn, knn, radius, use_absolute_error, absolute_error, n_sigma, remove_isolated, upto, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * Normals interleaved as x,y,z signed bytes, for the viewer to patch into its records.
+     * @returns {Int8Array}
+     */
+    normals_bytes() {
+        const ret = wasm.cloudanalysis_normals_bytes(this.__wbg_ptr);
+        var v1 = getArrayI8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @param {number} k
+     * @param {number} vx
+     * @param {number} vy
+     * @param {number} vz
+     * @param {boolean} use_viewpoint
+     * @param {Function | null} [progress]
+     */
+    orient_normals(k, vx, vy, vz, use_viewpoint, progress) {
+        wasm.cloudanalysis_orient_normals(this.__wbg_ptr, k, vx, vy, vz, use_viewpoint, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+    }
+    /**
+     * Turn each normal toward the nearest scanner station. `vps` is a flat x,y,z list in
+     * the same frame as the points (so already through the cloud's model matrix).
+     * @param {Float32Array} vps
+     */
+    orient_to_viewpoints(vps) {
+        const ptr0 = passArrayF32ToWasm0(vps, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.cloudanalysis_orient_to_viewpoints(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * @returns {number}
+     */
+    get reference_len() {
+        const ret = wasm.cloudanalysis_reference_len(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get reference_normals() {
+        const ret = wasm.cloudanalysis_reference_normals(this.__wbg_ptr);
+        return ret;
+    }
+    rewind() {
+        wasm.cloudanalysis_rewind(this.__wbg_ptr);
+    }
+    /**
+     * Returns the keep mask; the mean and cut-off used are reported separately.
+     * @param {number} k
+     * @param {number} n_sigma
+     * @param {Function | null} [progress]
+     * @returns {Uint8Array}
+     */
+    sor(k, n_sigma, progress) {
+        const ret = wasm.cloudanalysis_sor(this.__wbg_ptr, k, n_sigma, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * The second pass: this tile's keep mask against a cut-off decided over the cloud.
+     * @param {number} k
+     * @param {number} cut
+     * @param {number} upto
+     * @param {Function | null} [progress]
+     * @returns {Uint8Array}
+     */
+    sor_cut(k, cut, upto, progress) {
+        const ret = wasm.cloudanalysis_sor_cut(this.__wbg_ptr, k, cut, upto, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * Every one of this tile's own points' mean neighbour distance. The caller adds up
+     * the tiles, works out one threshold for the cloud, and compares against these,
+     * which searches each neighbourhood once rather than twice.
+     * @param {number} k
+     * @param {number} upto
+     * @param {Function | null} [progress]
+     * @returns {Float32Array}
+     */
+    sor_means(k, upto, progress) {
+        const ret = wasm.cloudanalysis_sor_means(this.__wbg_ptr, k, upto, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * The first pass of a tiled SOR over this tile's own points: `[sum, sum of squares,
+     * count]` of their mean neighbour distances. The caller adds the tiles up to get the
+     * cloud's mean and standard deviation, then hands the cut-off back to `sor_cut`.
+     * @param {number} k
+     * @param {number} upto
+     * @param {Function | null} [progress]
+     * @returns {Float64Array}
+     */
+    sor_stats(k, upto, progress) {
+        const ret = wasm.cloudanalysis_sor_stats(this.__wbg_ptr, k, upto, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @param {number} cell
+     */
+    start_reference(cell) {
+        wasm.cloudanalysis_start_reference(this.__wbg_ptr, cell);
+    }
+    /**
+     * @param {number} spacing
+     * @returns {Uint8Array}
+     */
+    subsample(spacing) {
+        const ret = wasm.cloudanalysis_subsample(this.__wbg_ptr, spacing);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * Rewrite the normal bytes of the next leaf, in the order the leaves were added.
+     * @param {Uint8Array} recs
+     */
+    write_normals(recs) {
+        var ptr0 = passArray8ToWasm0(recs, wasm.__wbindgen_malloc);
+        var len0 = WASM_VECTOR_LEN;
+        wasm.cloudanalysis_write_normals(this.__wbg_ptr, ptr0, len0, recs);
+    }
+}
+if (Symbol.dispose) CloudAnalysis.prototype[Symbol.dispose] = CloudAnalysis.prototype.free;
+
+/**
+ * RANSAC detection. `labels` is one shape index per point, -1 for the points no shape
+ * claimed, in the order they were handed in.
+ */
+export class Detection {
+    static __wrap(ptr) {
+        const obj = Object.create(Detection.prototype);
+        obj.__wbg_ptr = ptr;
+        DetectionFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        DetectionFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_detection_free(ptr, 0);
+    }
+    /**
+     * @returns {string}
+     */
+    get json() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.detection_json(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {Int32Array}
+     */
+    labels() {
+        const ret = wasm.detection_labels(this.__wbg_ptr);
+        var v1 = getArrayI32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+}
+if (Symbol.dispose) Detection.prototype[Symbol.dispose] = Detection.prototype.free;
+
+/**
+ * Streams points into a new E57 file. Field order: xyz f64 (relative to
+ * the pose translation), rgb u8, intensity u8, normal i8.
+ */
+export class E57Export {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        E57ExportFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_e57export_free(ptr, 0);
+    }
+    /**
+     * @param {Float64Array} xyz
+     * @param {Uint8Array} rgb
+     * @param {Uint8Array} inten
+     * @param {Int8Array} nrm
+     * @param {number} n
+     */
+    add_points(xyz, rgb, inten, nrm, n) {
+        const ptr0 = passArrayF64ToWasm0(xyz, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(rgb, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray8ToWasm0(inten, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArray8ToWasm0(nrm, wasm.__wbindgen_malloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ret = wasm.e57export_add_points(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, n);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    finish() {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.e57export_finish(ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0];
+    }
+    /**
+     * @param {object} sink
+     * @param {string} guid
+     * @param {string} name
+     * @param {number} tx
+     * @param {number} ty
+     * @param {number} tz
+     * @param {boolean} has_color
+     * @param {boolean} has_intensity
+     * @param {boolean} has_normals
+     */
+    constructor(sink, guid, name, tx, ty, tz, has_color, has_intensity, has_normals) {
+        const ptr0 = passStringToWasm0(guid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.e57export_new(sink, ptr0, len0, ptr1, len1, tx, ty, tz, has_color, has_intensity, has_normals);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        E57ExportFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+if (Symbol.dispose) E57Export.prototype[Symbol.dispose] = E57Export.prototype.free;
+
+export class E57Handle {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        E57HandleFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_e57handle_free(ptr, 0);
+    }
+    /**
+     * Raw JPEG/PNG bytes of image `idx` (index into the images2D list).
+     * @param {number} idx
+     * @returns {Uint8Array}
+     */
+    image_blob(idx) {
+        const ret = wasm.e57handle_image_blob(this.__wbg_ptr, idx);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Everything the UI needs for its scan card. Header + XML only.
+     * @returns {string}
+     */
+    meta() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.e57handle_meta(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @param {Function} read_range
+     * @param {number} len
+     */
+    constructor(read_range, len) {
+        const ret = wasm.e57handle_new(read_range, len);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        E57HandleFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * Decode scan `idx` keeping 1 in `stride` points, into an octree.
+     *
+     * `preview(records: Uint8Array, count, meta: Float64Array[4])` streams a
+     * quick sparse preview during decode (about `preview_target` points).
+     * `progress(phase, done, total) -> bool` — return true to abort.
+     * `leaf(blocks: Array<Uint8Array>, count, meta: Float64Array[10])` is
+     * called once per finished leaf: origin xyz, cube size, tight min xyz,
+     * tight max xyz. Positions are relative to the scan translation.
+     * @param {number} idx
+     * @param {number} stride
+     * @param {number} preview_target
+     * @param {number} mem_limit
+     * @param {Function} preview
+     * @param {Function} progress
+     * @param {Function} leaf
+     * @returns {object}
+     */
+    stream(idx, stride, preview_target, mem_limit, preview, progress, leaf) {
+        const ret = wasm.e57handle_stream(this.__wbg_ptr, idx, stride, preview_target, mem_limit, preview, progress, leaf);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+}
+if (Symbol.dispose) E57Handle.prototype[Symbol.dispose] = E57Handle.prototype.free;
+
+export class LazReader {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        LazReaderFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_lazreader_free(ptr, 0);
+    }
+    /**
+     * `vlr` is the body of the "laszip encoded" VLR (user id "laszip encoded", record 22204);
+     * `offset` is the file's offset to point data; `rec_len` the uncompressed record length.
+     * @param {Function} read_range
+     * @param {number} len
+     * @param {Uint8Array} vlr
+     * @param {number} offset
+     * @param {number} rec_len
+     */
+    constructor(read_range, len, vlr, offset, rec_len) {
+        const ptr0 = passArray8ToWasm0(vlr, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.lazreader_new(read_range, len, ptr0, len0, offset, rec_len);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        LazReaderFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * The next `n` points, as uncompressed LAS point records.
+     * @param {number} n
+     * @returns {Uint8Array}
+     */
+    read(n) {
+        const ret = wasm.lazreader_read(this.__wbg_ptr, n);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @param {number} index
+     */
+    seek_point(index) {
+        const ret = wasm.lazreader_seek_point(this.__wbg_ptr, index);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+}
+if (Symbol.dispose) LazReader.prototype[Symbol.dispose] = LazReader.prototype.free;
+
+/**
+ * Compresses LAS point records into a LAZ file through the same sink the E57 writer uses.
+ */
+export class LazWriter {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        LazWriterFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_lazwriter_free(ptr, 0);
+    }
+    /**
+     * @param {Uint8Array} recs
+     */
+    add_points(recs) {
+        const ptr0 = passArray8ToWasm0(recs, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.lazwriter_add_points(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    get count() {
+        const ret = wasm.lazwriter_count(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Flush the last chunk and write the chunk table. Returns where the data ends.
+     * @returns {number}
+     */
+    finish() {
+        const ret = wasm.lazwriter_finish(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0];
+    }
+    /**
+     * `fmt` is the LAS point format and `extra` the number of extra bytes per record.
+     * @param {object} sink
+     * @param {number} at
+     * @param {number} fmt
+     * @param {number} extra
+     */
+    constructor(sink, at, fmt, extra) {
+        const ret = wasm.lazwriter_new(sink, at, fmt, extra);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        LazWriterFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * The VLR body that has to go in the file's header, describing how it was compressed.
+     * @returns {Uint8Array}
+     */
+    vlr() {
+        const ret = wasm.lazwriter_vlr(this.__wbg_ptr);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+}
+if (Symbol.dispose) LazWriter.prototype[Symbol.dispose] = LazWriter.prototype.free;
+
+/**
+ * Surface reconstruction, driven from a worker: feed it the viewer's own leaf records,
+ * then pull the triangles back out. Buffers are moved, not copied, on the way out.
+ */
+export class MeshBuilder {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        MeshBuilderFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_meshbuilder_free(ptr, 0);
+    }
+    /**
+     * One octree leaf: its cube origin and size, plus the packed 14-byte records.
+     * `model` is the cloud's 4x4 transform in **row-major** order, or empty for identity.
+     * @param {number} ox
+     * @param {number} oy
+     * @param {number} oz
+     * @param {number} size
+     * @param {Uint8Array} recs
+     * @param {number} stride
+     * @param {Float32Array} model
+     */
+    add_leaf(ox, oy, oz, size, recs, stride, model) {
+        const ptr0 = passArray8ToWasm0(recs, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF32ToWasm0(model, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.meshbuilder_add_leaf(this.__wbg_ptr, ox, oy, oz, size, ptr0, len0, stride, ptr1, len1);
+    }
+    /**
+     * @returns {number}
+     */
+    bricks() {
+        const ret = wasm.meshbuilder_bricks(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Extract the surface. Returns a JSON summary; the buffers follow.
+     * @param {number} smooth
+     * @param {number} density_iso
+     * @returns {string}
+     */
+    build(smooth, density_iso) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.meshbuilder_build(this.__wbg_ptr, smooth, density_iso);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    colors() {
+        const ret = wasm.meshbuilder_colors(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @returns {Uint32Array}
+     */
+    indices() {
+        const ret = wasm.meshbuilder_indices(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @param {number} voxel
+     * @param {number} trunc_voxels
+     * @param {number} min_weight
+     */
+    constructor(voxel, trunc_voxels, min_weight) {
+        const ret = wasm.meshbuilder_new(voxel, trunc_voxels, min_weight);
+        this.__wbg_ptr = ret;
+        MeshBuilderFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    normals() {
+        const ret = wasm.meshbuilder_normals(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    positions() {
+        const ret = wasm.meshbuilder_positions(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+}
+if (Symbol.dispose) MeshBuilder.prototype[Symbol.dispose] = MeshBuilder.prototype.free;
+
+/**
+ * A mesh prepared for distance queries. Built once, queried a cloud at a time.
+ */
+export class MeshDistance {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        MeshDistanceFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_meshdistance_free(ptr, 0);
+    }
+    /**
+     * Distance from every point to the nearest triangle. `signed` gives the side.
+     * @param {Float32Array} pts
+     * @param {boolean} signed
+     * @param {number} max_r
+     * @param {Function | null} [progress]
+     * @returns {Float32Array}
+     */
+    distances(pts, signed, max_r, progress) {
+        const ptr0 = passArrayF32ToWasm0(pts, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.meshdistance_distances(this.__wbg_ptr, ptr0, len0, signed, max_r, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+        var v2 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v2;
+    }
+    /**
+     * @param {Float32Array} pos
+     * @param {Uint32Array} idx
+     */
+    constructor(pos, idx) {
+        const ptr0 = passArrayF32ToWasm0(pos, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray32ToWasm0(idx, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.meshdistance_new(ptr0, len0, ptr1, len1);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        MeshDistanceFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+}
+if (Symbol.dispose) MeshDistance.prototype[Symbol.dispose] = MeshDistance.prototype.free;
+
+/**
+ * Octree sink for points that don't come from an E57: PLY, LAS, a device scan.
+ * Same cells, same preview, same leaf hand-over as `E57Handle::stream`.
+ */
+export class PointSink {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        PointSinkFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_pointsink_free(ptr, 0);
+    }
+    /**
+     * @param {Function} preview
+     * @param {Function} progress
+     * @param {Function} leaf
+     * @returns {object}
+     */
+    finish(preview, progress, leaf) {
+        const ret = wasm.pointsink_finish(this.__wbg_ptr, preview, progress, leaf);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * `bounds` = [minx,miny,minz,maxx,maxy,maxz] hint (the root grows if points fall outside).
+     * @param {Float64Array} bounds
+     * @param {number} expected
+     * @param {number} mem_limit
+     * @param {number} preview_target
+     */
+    constructor(bounds, expected, mem_limit, preview_target) {
+        const ptr0 = passArrayF64ToWasm0(bounds, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.pointsink_new(ptr0, len0, expected, mem_limit, preview_target);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
+        PointSinkFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * Positions relative to whatever origin the caller chose (keep them small: f32 on the GPU).
+     * `cls` is optional: pass an empty slice when the source has no classification.
+     * @param {Float64Array} xyz
+     * @param {Uint8Array} rgb
+     * @param {Uint8Array} inten
+     * @param {Int8Array} nrm
+     * @param {Uint8Array} cls
+     * @param {number} n
+     * @param {Function} preview
+     */
+    push(xyz, rgb, inten, nrm, cls, n, preview) {
+        const ptr0 = passArrayF64ToWasm0(xyz, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(rgb, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray8ToWasm0(inten, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArray8ToWasm0(nrm, wasm.__wbindgen_malloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passArray8ToWasm0(cls, wasm.__wbindgen_malloc);
+        const len4 = WASM_VECTOR_LEN;
+        const ret = wasm.pointsink_push(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, n, preview);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+}
+if (Symbol.dispose) PointSink.prototype[Symbol.dispose] = PointSink.prototype.free;
+
+/**
+ * @param {Float32Array} xyz
+ * @param {Float32Array} nrm
+ * @param {number} tol
+ * @param {number} min_pts
+ * @param {number} max_shapes
+ * @param {string} kinds
+ * @param {number} trials
+ * @param {Function | null} [progress]
+ * @returns {Detection}
+ */
+export function detect_shapes(xyz, nrm, tol, min_pts, max_shapes, kinds, trials, progress) {
+    const ptr0 = passArrayF32ToWasm0(xyz, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF32ToWasm0(nrm, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(kinds, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.detect_shapes(ptr0, len0, ptr1, len1, tol, min_pts, max_shapes, ptr2, len2, trials, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
+    return Detection.__wrap(ret);
+}
+
+/**
+ * Fit one primitive to a set of points. `xyz` is x,y,z triples; `nrm` the same length for
+ * a cylinder (its axis comes from the normals) and may be empty otherwise.
+ * @param {string} kind
+ * @param {Float32Array} xyz
+ * @param {Float32Array} nrm
+ * @returns {string}
+ */
+export function fit_shape(kind, xyz, nrm) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(kind, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF32ToWasm0(xyz, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF32ToWasm0(nrm, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.fit_shape(ptr0, len0, ptr1, len1, ptr2, len2);
+        deferred4_0 = ret[0];
+        deferred4_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * The laszip VLR body for a point format, so a caller can lay out the file's header
+ * before it starts compressing: the offset to point data depends on this record's length.
+ * @param {number} fmt
+ * @param {number} extra
+ * @returns {Uint8Array}
+ */
+export function laz_vlr(fmt, extra) {
+    const ret = wasm.laz_vlr(fmt, extra);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v1;
+}
+
+/**
+ * @param {number} n
+ */
+export function set_window_size(n) {
+    wasm.set_window_size(n);
+}
+function __wbg_get_imports() {
+    const import0 = {
+        __proto__: null,
+        __wbg___wbindgen_copy_to_typed_array_cccd104be8cf0b8d: function(arg0, arg1, arg2) {
+            new Uint8Array(arg2.buffer, arg2.byteOffset, arg2.byteLength).set(getArrayU8FromWasm0(arg0, arg1));
+        },
+        __wbg___wbindgen_is_falsy_4502df4d571fca70: function(arg0) {
+            const ret = !arg0;
+            return ret;
+        },
+        __wbg___wbindgen_is_function_fcda5e3902d732fe: function(arg0) {
+            const ret = typeof(arg0) === 'function';
+            return ret;
+        },
+        __wbg___wbindgen_throw_5d9e815e6fdf150f: function(arg0, arg1) {
+            throw new Error(getStringFromWasm0(arg0, arg1));
+        },
+        __wbg_call_6bcf8d3e20937e46: function() { return handleError(function (arg0, arg1, arg2) {
+            const ret = arg0.call(arg1, arg2);
+            return ret;
+        }, arguments); },
+        __wbg_call_7bbd9cceba9949ad: function() { return handleError(function (arg0, arg1, arg2, arg3) {
+            const ret = arg0.call(arg1, arg2, arg3);
+            return ret;
+        }, arguments); },
+        __wbg_call_c1ad1cb1b78e8130: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
+            const ret = arg0.call(arg1, arg2, arg3, arg4);
+            return ret;
+        }, arguments); },
+        __wbg_error_757e9472f8410341: function(arg0, arg1) {
+            let deferred0_0;
+            let deferred0_1;
+            try {
+                deferred0_0 = arg0;
+                deferred0_1 = arg1;
+                console.error(getStringFromWasm0(arg0, arg1));
+            } finally {
+                wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
+            }
+        },
+        __wbg_get_989d0a1309644f2b: function() { return handleError(function (arg0, arg1) {
+            const ret = Reflect.get(arg0, arg1);
+            return ret;
+        }, arguments); },
+        __wbg_length_31bdaf014f5fbde2: function(arg0) {
+            const ret = arg0.length;
+            return ret;
+        },
+        __wbg_new_1da3429bc3c4541c: function(arg0) {
+            const ret = new Uint8Array(arg0);
+            return ret;
+        },
+        __wbg_new_227d7c05414eb861: function() {
+            const ret = new Error();
+            return ret;
+        },
+        __wbg_new_bebc3f4757acf305: function() {
+            const ret = new Object();
+            return ret;
+        },
+        __wbg_new_ffa92086ea89f79c: function() {
+            const ret = new Array();
+            return ret;
+        },
+        __wbg_new_from_slice_3b4c7f1456059f80: function(arg0, arg1) {
+            const ret = new Float64Array(getArrayF64FromWasm0(arg0, arg1));
+            return ret;
+        },
+        __wbg_new_from_slice_4ee02165f9de919e: function(arg0, arg1) {
+            const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
+            return ret;
+        },
+        __wbg_prototypesetcall_ae9f5e7459250748: function(arg0, arg1, arg2) {
+            Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
+        },
+        __wbg_push_bfdf956ba476f65b: function(arg0, arg1) {
+            const ret = arg0.push(arg1);
+            return ret;
+        },
+        __wbg_set_a377297433dfea63: function() { return handleError(function (arg0, arg1, arg2) {
+            const ret = Reflect.set(arg0, arg1, arg2);
+            return ret;
+        }, arguments); },
+        __wbg_slice_ec88db741786524b: function(arg0, arg1, arg2) {
+            const ret = arg0.slice(arg1 >>> 0, arg2 >>> 0);
+            return ret;
+        },
+        __wbg_stack_3b0d974bbf31e44f: function(arg0, arg1) {
+            const ret = arg1.stack;
+            const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
+            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+        },
+        __wbindgen_generic_0000000000000001: function(arg0) {
+            // Cast intrinsic for `F64 -> Externref`.
+            const ret = arg0;
+            return ret;
+        },
+        __wbindgen_generic_0000000000000002: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(String) -> Externref`.
+            const ret = getStringFromWasm0(arg0, arg1);
+            return ret;
+        },
+        __wbindgen_init_externref_table: function() {
+            const table = wasm.__wbindgen_externrefs;
+            const offset = table.grow(4);
+            table.set(0, undefined);
+            table.set(offset + 0, undefined);
+            table.set(offset + 1, null);
+            table.set(offset + 2, true);
+            table.set(offset + 3, false);
+        },
+    };
+    return {
+        __proto__: null,
+        "./e57_wasm_bg.js": import0,
+    };
+}
+
+const CloudAnalysisFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_cloudanalysis_free(ptr, 1));
+const DetectionFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_detection_free(ptr, 1));
+const E57ExportFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_e57export_free(ptr, 1));
+const E57HandleFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_e57handle_free(ptr, 1));
+const LazReaderFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_lazreader_free(ptr, 1));
+const LazWriterFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_lazwriter_free(ptr, 1));
+const MeshBuilderFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_meshbuilder_free(ptr, 1));
+const MeshDistanceFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_meshdistance_free(ptr, 1));
+const PointSinkFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_pointsink_free(ptr, 1));
+
+function addToExternrefTable0(obj) {
+    const idx = wasm.__externref_table_alloc();
+    wasm.__wbindgen_externrefs.set(idx, obj);
+    return idx;
+}
+
+function getArrayF32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
+function getArrayF64FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
+}
+
+function getArrayI32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getInt32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
+function getArrayI8FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getInt8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
+}
+
+function getArrayU32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+
+function getArrayU8FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
+}
+
+let cachedDataViewMemory0 = null;
+function getDataViewMemory0() {
+    if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || (cachedDataViewMemory0.buffer.detached === undefined && cachedDataViewMemory0.buffer !== wasm.memory.buffer)) {
+        cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
+    }
+    return cachedDataViewMemory0;
+}
+
+let cachedFloat32ArrayMemory0 = null;
+function getFloat32ArrayMemory0() {
+    if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
+        cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
+    }
+    return cachedFloat32ArrayMemory0;
+}
+
+let cachedFloat64ArrayMemory0 = null;
+function getFloat64ArrayMemory0() {
+    if (cachedFloat64ArrayMemory0 === null || cachedFloat64ArrayMemory0.byteLength === 0) {
+        cachedFloat64ArrayMemory0 = new Float64Array(wasm.memory.buffer);
+    }
+    return cachedFloat64ArrayMemory0;
+}
+
+let cachedInt32ArrayMemory0 = null;
+function getInt32ArrayMemory0() {
+    if (cachedInt32ArrayMemory0 === null || cachedInt32ArrayMemory0.byteLength === 0) {
+        cachedInt32ArrayMemory0 = new Int32Array(wasm.memory.buffer);
+    }
+    return cachedInt32ArrayMemory0;
+}
+
+let cachedInt8ArrayMemory0 = null;
+function getInt8ArrayMemory0() {
+    if (cachedInt8ArrayMemory0 === null || cachedInt8ArrayMemory0.byteLength === 0) {
+        cachedInt8ArrayMemory0 = new Int8Array(wasm.memory.buffer);
+    }
+    return cachedInt8ArrayMemory0;
+}
+
+function getStringFromWasm0(ptr, len) {
+    return decodeText(ptr >>> 0, len);
+}
+
+let cachedUint32ArrayMemory0 = null;
+function getUint32ArrayMemory0() {
+    if (cachedUint32ArrayMemory0 === null || cachedUint32ArrayMemory0.byteLength === 0) {
+        cachedUint32ArrayMemory0 = new Uint32Array(wasm.memory.buffer);
+    }
+    return cachedUint32ArrayMemory0;
+}
+
+let cachedUint8ArrayMemory0 = null;
+function getUint8ArrayMemory0() {
+    if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
+        cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
+    }
+    return cachedUint8ArrayMemory0;
+}
+
+function handleError(f, args) {
+    try {
+        return f.apply(this, args);
+    } catch (e) {
+        const idx = addToExternrefTable0(e);
+        wasm.__wbindgen_exn_store(idx);
+    }
+}
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
+}
+
+function passArray32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getUint32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passArrayF32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getFloat32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passArrayF64ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 8, 8) >>> 0;
+    getFloat64ArrayMemory0().set(arg, ptr / 8);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passStringToWasm0(arg, malloc, realloc) {
+    if (realloc === undefined) {
+        const buf = cachedTextEncoder.encode(arg);
+        const ptr = malloc(buf.length, 1) >>> 0;
+        getUint8ArrayMemory0().subarray(ptr, ptr + buf.length).set(buf);
+        WASM_VECTOR_LEN = buf.length;
+        return ptr;
+    }
+
+    let len = arg.length;
+    let ptr = malloc(len, 1) >>> 0;
+
+    const mem = getUint8ArrayMemory0();
+
+    let offset = 0;
+
+    for (; offset < len; offset++) {
+        const code = arg.charCodeAt(offset);
+        if (code > 0x7F) break;
+        mem[ptr + offset] = code;
+    }
+    if (offset !== len) {
+        if (offset !== 0) {
+            arg = arg.slice(offset);
+        }
+        ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
+        const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
+        const ret = cachedTextEncoder.encodeInto(arg, view);
+
+        offset += ret.written;
+        ptr = realloc(ptr, len, offset, 1) >>> 0;
+    }
+
+    WASM_VECTOR_LEN = offset;
+    return ptr;
+}
+
+function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_externrefs.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
+}
+
+let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+cachedTextDecoder.decode();
+const MAX_SAFARI_DECODE_BYTES = 2146435072;
+let numBytesDecoded = 0;
+function decodeText(ptr, len) {
+    numBytesDecoded += len;
+    if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
+        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+        cachedTextDecoder.decode();
+        numBytesDecoded = len;
+    }
+    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+}
+
+const cachedTextEncoder = new TextEncoder();
+
+if (!('encodeInto' in cachedTextEncoder)) {
+    cachedTextEncoder.encodeInto = function (arg, view) {
+        const buf = cachedTextEncoder.encode(arg);
+        view.set(buf);
+        return {
+            read: arg.length,
+            written: buf.length
+        };
+    };
+}
+
+let WASM_VECTOR_LEN = 0;
+
+let wasmModule, wasmInstance, wasm;
+function __wbg_finalize_init(instance, module) {
+    wasmInstance = instance;
+    wasm = instance.exports;
+    wasmModule = module;
+    cachedDataViewMemory0 = null;
+    cachedFloat32ArrayMemory0 = null;
+    cachedFloat64ArrayMemory0 = null;
+    cachedInt32ArrayMemory0 = null;
+    cachedInt8ArrayMemory0 = null;
+    cachedUint32ArrayMemory0 = null;
+    cachedUint8ArrayMemory0 = null;
+    wasm.__wbindgen_start();
+    return wasm;
+}
+
+async function __wbg_load(module, imports) {
+    if (typeof Response === 'function' && module instanceof Response) {
+        if (!module.ok) {
+            throw new Error(`failed to fetch Wasm: ${module.status} ${module.statusText} fetching '${module.url}'`);
+        }
+
+        if (typeof WebAssembly.instantiateStreaming === 'function') {
+            try {
+                return await WebAssembly.instantiateStreaming(module, imports);
+            } catch (e) {
+                const validResponse = expectedResponseType(module.type);
+
+                if (validResponse && module.headers.get('Content-Type') !== 'application/wasm') {
+                    console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
+
+                } else { throw e; }
+            }
+        }
+
+        const bytes = await module.arrayBuffer();
+        return await WebAssembly.instantiate(bytes, imports);
+    } else {
+        const instance = await WebAssembly.instantiate(module, imports);
+
+        if (instance instanceof WebAssembly.Instance) {
+            return { instance, module };
+        } else {
+            return instance;
+        }
+    }
+
+    function expectedResponseType(type) {
+        switch (type) {
+            case 'basic': case 'cors': case 'default': return true;
+        }
+        return false;
+    }
+}
+
+function initSync(module) {
+    if (wasm !== undefined) return wasm;
+
+
+    if (module !== undefined) {
+        if (Object.getPrototypeOf(module) === Object.prototype) {
+            ({module} = module)
+        } else {
+            console.warn('using deprecated parameters for `initSync()`; pass a single object instead')
+        }
+    }
+
+    const imports = __wbg_get_imports();
+    if (!(module instanceof WebAssembly.Module)) {
+        module = new WebAssembly.Module(module);
+    }
+    const instance = new WebAssembly.Instance(module, imports);
+    return __wbg_finalize_init(instance, module);
+}
+
+async function __wbg_init(module_or_path) {
+    if (wasm !== undefined) return wasm;
+
+
+    if (module_or_path !== undefined) {
+        if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
+            ({module_or_path} = module_or_path)
+        } else {
+            console.warn('using deprecated parameters for the initialization function; pass a single object instead')
+        }
+    }
+
+    if (module_or_path === undefined) {
+        module_or_path = new URL('e57_wasm_bg.wasm', import.meta.url);
+    }
+    const imports = __wbg_get_imports();
+
+    if (typeof module_or_path === 'string' || (typeof Request === 'function' && module_or_path instanceof Request) || (typeof URL === 'function' && module_or_path instanceof URL)) {
+        module_or_path = fetch(module_or_path);
+    }
+
+    const { instance, module } = await __wbg_load(await module_or_path, imports);
+
+    return __wbg_finalize_init(instance, module);
+}
+
+export { initSync, __wbg_init as default };

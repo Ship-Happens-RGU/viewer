@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Everything that has to be true of a commit.
+#
+# Note for a first run on a private repository: Actions minutes are billed on private repos,
+# and a run will be refused outright ("recent account payments have failed or your spending
+# limit needs to be increased") until billing is set up. Public repositories are free.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  web:
+    name: web bundle and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix mcp
+      - name: type check
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: build
+        run: npm run build
+      - name: the desktop bundle carries no network dependency
+        run: npm run build:desktop && node tools/check-offline.mjs
+      - name: both MCP servers agree with mcp/tools.json
+        run: npm run test:mcp
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+
+  hygiene:
+    name: licence and docs hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - name: every source file carries an SPDX header
+        run: node tools/spdx.mjs --check
+      - name: no hard-coded home paths in the drivers
+        run: node tools/scrub-paths.mjs --check
+      - name: links resolve, mermaid renders, and the house style holds
+        run: |
+          npx playwright install --with-deps chromium
+          node tools/check-markdown.mjs
+      # cargo-license takes a couple of minutes to build, and it changes about once a year
+      - name: cache cargo-license
+        id: cargo-license-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-license
+          key: cargo-license-0.7.0-${{ runner.os }}
+      - name: install cargo-license
+        if: steps.cargo-license-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-license --version 0.7.0 --locked
+      - name: every dependency licence can be combined with GPL-3.0
+        run: |
+          npm ci --prefix mcp
+          npm ci --prefix functions
+          node tools/third-party.mjs
+      - name: THIRD_PARTY.md is up to date
+        run: git diff --exit-code THIRD_PARTY.md
+
+  native:
+    name: native checks (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/e57-wasm -> target
+      - name: analysis, shapes and point-to-triangle against known answers
+        run: cargo run --release --bin anatest --manifest-path crates/e57-wasm/Cargo.toml
+
+  desktop:
+    name: desktop
+    uses: ./.github/workflows/desktop.yml
+    with:
+      artifact-prefix: e57view-dev
+      retention-days: 7
+
+# ---------------------------------------------------------------------------
+# Signing and notarisation, when you have certificates
+# ---------------------------------------------------------------------------
+# macOS — add these repository secrets and pass them as env to the build step in desktop.yml:
+#   APPLE_CERTIFICATE            base64 of a Developer ID Application .p12
+#   APPLE_CERTIFICATE_PASSWORD   the .p12 password
+#   APPLE_SIGNING_IDENTITY       "Developer ID Application: Your Name (TEAMID)"
+#   APPLE_ID, APPLE_PASSWORD     an Apple ID and an app-specific password
+#   APPLE_TEAM_ID                your team id
+# Without them the .app is unsigned: macOS refuses the first open, and the user has to
+# right-click -> Open once, or run
+#   xattr -dr com.apple.quarantine /Applications/e57view.app
+#
+# Windows — sign the NSIS installer with signtool, or set
+#   bundle.windows.certificateThumbprint and bundle.windows.digestAlgorithm
+# in desktop/tauri.conf.json with the certificate installed on the runner. Unsigned,
+# SmartScreen warns on first run.
+#
+# Linux — AppImage and .deb are not signed by convention; the release publishes SHA256SUMS.txt.

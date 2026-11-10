@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/tGhattas/e57view/security/advisories/new
+    about: Please report privately rather than in a public issue. See SECURITY.md.

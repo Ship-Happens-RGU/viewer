@@ -1,0 +1,458 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Neighbourhood analysis in the browser, on a fixture whose right answers are known.
+import { chromium } from 'playwright';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const URL_ = process.env.URL || 'http://127.0.0.1:5180/';
+// A flat plane, some specks floating above it, and a separate blob far away.
+// Deliberately NO normals in the file, so normal computation has something to do.
+const PLANE = 120 * 120, SPECK = 150, BLOB = 40 * 40;
+const ply = join(tmpdir(), 'e57view-analysis.ply');
+{
+  const L = ['ply', 'format ascii 1.0', `element vertex ${PLANE + SPECK + BLOB}`,
+    'property float x', 'property float y', 'property float z',
+    'property uchar red', 'property uchar green', 'property uchar blue', 'end_header'];
+  for (let i = 0; i < 120; i++) for (let j = 0; j < 120; j++)
+    L.push(`${(10 + i * 0.05).toFixed(4)} ${(10 + j * 0.05).toFixed(4)} 20.0000 190 180 160`);
+  for (let i = 0; i < SPECK; i++)
+    L.push(`${(10 + (i % 12) * 0.45).toFixed(4)} ${(10 + ((i / 12) | 0) * 0.45).toFixed(4)} ${(21.4 + (i % 5) * 0.3).toFixed(4)} 230 90 90`);
+  for (let i = 0; i < 40; i++) for (let j = 0; j < 40; j++)
+    L.push(`${(40 + i * 0.05).toFixed(4)} ${(40 + j * 0.05).toFixed(4)} 25.0000 90 190 120`);
+  writeFileSync(ply, L.join('\n'));
+}
+// A second, much bigger fixture, for the tiling checks at the end. The octree splits a leaf
+// at 400,000 points, so a cloud has to be a few million before there are enough leaves to
+// cut into tiles at all. Binary PLY, because writing 1.5M lines of text is slower than
+// anything it would be testing.
+const BIG_G = 1200, BIG_SPECK = 3000, BIG_DUP = 100000;
+const BIG_N = BIG_G * BIG_G + BIG_SPECK + BIG_DUP;
+const bigPly = join(tmpdir(), 'e57view-tiles.ply');
+{
+  const head = Buffer.from(['ply', 'format binary_little_endian 1.0', `element vertex ${BIG_N}`,
+    'property float x', 'property float y', 'property float z',
+    'property uchar red', 'property uchar green', 'property uchar blue', 'end_header', ''].join('\n'));
+  const body = Buffer.alloc(BIG_N * 15);
+  const dv = new DataView(body.buffer, body.byteOffset, body.length);
+  let seed = 12345, at = 0;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const put = (x, y, z, r, g, bl) => {
+    dv.setFloat32(at, x, true); dv.setFloat32(at + 4, y, true); dv.setFloat32(at + 8, z, true);
+    body[at + 12] = r; body[at + 13] = g; body[at + 14] = bl;
+    at += 15;
+  };
+  const xs = new Float32Array(BIG_DUP), ys = new Float32Array(BIG_DUP), zs = new Float32Array(BIG_DUP);
+  for (let i = 0; i < BIG_G; i++) for (let j = 0; j < BIG_G; j++) {
+    const k = i * BIG_G + j;
+    const x = 10 + i * 0.01, y = 10 + j * 0.01, z = 20 + (rnd() - 0.5) * 0.002;
+    if (k < BIG_DUP) { xs[k] = x; ys[k] = y; zs[k] = z; }
+    put(x, y, z, 190, 180, 160);
+  }
+  for (let i = 0; i < BIG_SPECK; i++) put(10 + rnd() * 12, 10 + rnd() * 12, 20.1 + rnd() * 0.9, 230, 90, 90);
+  for (let i = 0; i < BIG_DUP; i++) put(xs[i], ys[i], zs[i], 190, 180, 160);   // exact repeats
+  writeFileSync(bigPly, Buffer.concat([head, body]));
+}
+mkdirSync('shots', { recursive: true });
+const TOTAL = PLANE + SPECK + BLOB;
+
+const b = await chromium.launch({ channel: 'chrome', headless: false, args: ['--ignore-gpu-blocklist', '--enable-gpu'] });
+const p = await (await b.newContext({ viewport: { width: 1340, height: 880 } })).newPage();
+p.on('pageerror', e => console.log('  [PAGEERROR]', String(e).slice(0, 300)));
+p.on('console', m => { if (m.type() === 'error') console.log('  [err]', m.text().slice(0, 200)); });
+let fails = 0;
+const ok = (n, c, d = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${d ? ' · ' + d : ''}`); if (!c) fails++; };
+const idle = () => p.waitForFunction(() => document.getElementById('busy').classList.contains('hidden'), null, { timeout: 300000 });
+
+await p.goto(URL_, { waitUntil: 'networkidle' });
+await p.evaluate(async () => { window.showSaveFilePicker = undefined; localStorage.clear(); const r = await navigator.storage.getDirectory(); for (const d of ['e57view-cache','e57view-undo']) { try { await r.removeEntry(d, { recursive: true }); } catch {} } });
+await p.setInputFiles('#file-input', ply);
+await p.waitForFunction(() => /loaded in/.test(document.getElementById('tb-points')?.textContent || ''), null, { timeout: 120000 });
+await p.waitForTimeout(900);
+try { await p.click('#modal-btns button:has-text("Not now")', { timeout: 3000 }); } catch {}
+await p.evaluate(() => document.querySelectorAll('#panel .grp').forEach(g => g.classList.remove('closed')));
+console.log('LOAD:', await p.textContent('#tb-points'));
+
+// ---- the file has no normals, so the surface tool must fall back to density
+let st = await p.evaluate(() => window.__app.buildMesh({ voxel: 5, smooth: 1, trunc: 2, confirm: false }));
+ok('before normals, surface uses density', st.unoriented > st.oriented, `${st.oriented} oriented, ${st.unoriented} not`);
+await p.evaluate(() => document.getElementById('k-mclear').click());
+
+// ---- compute + orient normals
+let t = Date.now();
+await p.evaluate(() => window.__app.analysis('normals', { k: 16, orient: true }, 'normals'));
+await idle();
+console.log(`NORMALS ${((Date.now() - t) / 1000).toFixed(1)}s ·`, await p.textContent('#v-analysis'));
+const nrm = await p.evaluate(() => {
+  let withN = 0, n = 0, up = 0;
+  for (const l of window.__viewer.cells.leavesForMask()) {
+    const recs = l.readback(window.__viewer.cells.gl2);
+    for (let i = 0; i < l.count; i++) {
+      const o = i * 14, nx = (recs[o+10]<<24>>24), ny = (recs[o+11]<<24>>24), nz = (recs[o+12]<<24>>24);
+      n++;
+      if (!(nx === 0 && ny === 0 && nz === 127)) withN++;
+      if (Math.abs(nz) > 120) up++;
+    }
+  }
+  return { n, withN, up };
+});
+ok('every point now carries a normal', nrm.withN > nrm.n * 0.99, `${nrm.withN}/${nrm.n}`);
+ok('plane normals are vertical', nrm.up > PLANE * 0.95, `${nrm.up} with |nz|>0.94`);
+
+// ---- the surface tool should now use them
+st = await p.evaluate(() => window.__app.buildMesh({ voxel: 5, smooth: 1, trunc: 2, confirm: false }));
+ok('surface now reconstructs from normals', st.oriented > st.unoriented * 10, `${st.oriented} oriented`);
+await p.evaluate(() => document.getElementById('k-mclear').click());
+
+// ---- computed normals are an undoable edit, and the cache is flagged as behind
+const histAfterNormals = await p.evaluate(() => ({ steps: window.__app.hist.steps, label: window.__app.hist.peekUndo()?.label, kind: window.__app.hist.peekUndo()?.kind }));
+ok('normals pushed an undo step', histAfterNormals.kind === 'normals' && histAfterNormals.steps.undo >= 1, `${histAfterNormals.steps.undo} undo · ${histAfterNormals.label}`);
+const markers = () => p.evaluate(() => {
+  let placeholder = 0, real = 0;
+  for (const l of window.__viewer.cells.leavesForMask()) {
+    const recs = l.readback(window.__viewer.cells.gl2);
+    for (let i = 0; i < l.count; i++) {
+      const o = i * 14, nx = (recs[o+10]<<24>>24), ny = (recs[o+11]<<24>>24), nz = (recs[o+12]<<24>>24);
+      if (nx === 0 && ny === 0 && nz === 127) placeholder++; else real++;
+    }
+  }
+  return { placeholder, real };
+});
+await p.click('#tb-undo'); await idle();
+let mk = await markers();
+ok('undo brings back the (0,0,127) marker', mk.placeholder > TOTAL * 0.99 && mk.real < TOTAL * 0.01, `${mk.placeholder} placeholders, ${mk.real} normals`);
+await p.click('#tb-redo'); await idle();
+mk = await markers();
+ok('redo puts the normals back', mk.real > TOTAL * 0.99 && mk.placeholder < TOTAL * 0.01, `${mk.real} normals, ${mk.placeholder} placeholders`);
+
+// ---- a geometric feature becomes a scalar field
+t = Date.now();
+await p.evaluate(() => window.__app.analysis('feature', { name: 'planarity', k: 16, radius: 0.1 }, 'Planarity'));
+await idle();
+const sf = await p.evaluate(() => ({ s: window.__app.sfStats, mode: window.__viewer.knobs.colorMode, shown: document.body.classList.contains('has-sf'), label: document.getElementById('v-sfname').textContent }));
+console.log(`FEATURE ${((Date.now() - t) / 1000).toFixed(1)}s ·`, sf.label);
+ok('field produced for every point', sf.s && sf.s.n > TOTAL * 0.97, `${sf.s?.n} values`);
+ok('planarity is high on a plane', sf.s && sf.s.max > 0.9, `max ${sf.s?.max.toFixed(3)}`);
+ok('colouring switched to the field', sf.mode === 5 && sf.shown, `colorMode ${sf.mode}`);
+await p.waitForTimeout(500); await p.screenshot({ path: 'shots/analysis-field.png' });
+
+// ---- the field must survive a crop, still lined up with its points
+const beforeCrop = await p.evaluate(() => window.__viewer.loaded);
+await p.evaluate(() => {
+  const v = window.__viewer;
+  // the fixture's bounding-box centre is empty air between the plane and the far blob,
+  // so aim at the plane itself: 3 m in from the minimum corner
+  const b = v.bounds();
+  v.controls.target.set(b.min.x + 3, b.min.y + 3, b.min.z); v.controls.update();
+  document.getElementById('k-cropcentre').click();
+  for (const id of ['k-cropsize','k-cropsy','k-cropsz']) { const s = document.getElementById(id); s.value = '0.35'; s.dispatchEvent(new Event('input')); }
+});
+await p.click('#k-cropapply'); await p.waitForSelector('#modal:not(.hidden)'); await p.click('#modal-btns button.danger'); await idle();
+const afterCrop = await p.evaluate(() => {
+  const v = window.__viewer; let pts = 0, finite = 0;
+  for (const l of v.cells.leavesForMask()) { pts += l.count; if (l.sf) for (let i = 0; i < l.count; i++) if (Number.isFinite(l.sf[i])) finite++; }
+  return { pts, finite, loaded: v.loaded };
+});
+ok('crop kept the field aligned', afterCrop.pts === afterCrop.loaded && afterCrop.finite > afterCrop.pts * 0.9 && afterCrop.pts < beforeCrop,
+   `${afterCrop.pts} points, ${afterCrop.finite} field values`);
+await p.click('#tb-undo'); await idle();
+const restored = await p.evaluate(() => { const v = window.__viewer; let finite = 0, pts = 0; for (const l of v.cells.leavesForMask()) { pts += l.count; if (l.sf) for (let i = 0; i < l.count; i++) if (Number.isFinite(l.sf[i])) finite++; } return { pts, finite }; });
+ok('undo restored points and their field', restored.pts === beforeCrop && restored.finite > beforeCrop * 0.9, `${restored.pts} points, ${restored.finite} values`);
+await p.evaluate(() => document.getElementById('k-sfclear').click());
+
+// ---- outlier removal
+t = Date.now();
+const sor = p.evaluate(() => window.__app.maskTool('sor', { k: 16, sigma: 1.0 }, 'Remove outliers', '<p>{n} of {k}</p>'));
+await p.waitForSelector('#modal:not(.hidden)', { timeout: 300000 });
+const dlg = (await p.textContent('#modal-body')).replace(/\s+/g, ' ').trim();
+await p.click('#modal-btns button.danger'); await sor; await idle();
+const afterSor = await p.evaluate(() => window.__viewer.loaded);
+console.log(`SOR ${((Date.now() - t) / 1000).toFixed(1)}s · ${dlg.slice(0, 90)}`);
+ok('outliers removed, surface kept', TOTAL - afterSor >= SPECK * 0.9 && TOTAL - afterSor < SPECK * 2.5, `${TOTAL - afterSor} removed of ${SPECK} planted`);
+await p.click('#tb-undo'); await idle();
+ok('undo restores the removal', await p.evaluate(() => window.__viewer.loaded) === TOTAL, '');
+
+// ---- connected components
+await p.evaluate(() => window.__app.analysis('components', { radius: 0.12, minPts: 16 }, 'Connected components'));
+await idle();
+const cc = await p.textContent('#v-analysis');
+console.log('COMPONENTS ·', cc);
+ok('two clusters found', /\b2 clusters\b/.test(cc), cc);
+
+// ---- thinning
+await p.evaluate(() => document.getElementById('k-sfclear').click());
+const before = await p.evaluate(() => window.__viewer.loaded);
+const thin = p.evaluate(() => window.__app.maskTool('subsample', { spacing: 0.2 }, 'Thin', '<p>{n} of {k}</p>'));
+await p.waitForSelector('#modal:not(.hidden)', { timeout: 300000 });
+await p.click('#modal-btns button.danger'); await thin; await idle();
+const after = await p.evaluate(() => window.__viewer.loaded);
+ok('thinning keeps roughly one point per cube', after < before / 3 && after > 100, `${before} to ${after}`);
+
+// ---- a scalar field must stay lined up when applyRegions is asked not to record an undo.
+// `mask` used to be allocated only for the undo path, so with record=false every kept value
+// landed at the wrong index. Unique per-point values make any misordering visible.
+await p.evaluate(() => window.__app.analysis('feature', { name: 'neighbours', k: 16, radius: 0.1 }, 'Neighbours'));
+await idle();
+const align = await p.evaluate(() => {
+  const v = window.__viewer, REC = 14;
+  const gl = v.cells.gl2;
+  // a unique value per point, so a shift of one is detectable
+  let tag = 0;
+  for (const l of v.cells.leavesForMask()) {
+    const a = new Float32Array(l.count);
+    for (let i = 0; i < l.count; i++) a[i] = ++tag;
+    l.setScalar(gl, a);
+  }
+  const read = () => {
+    const out = [];
+    for (const l of v.cells.leavesForMask()) {
+      const recs = l.readback(gl);
+      const u16 = new Uint16Array(recs.buffer, recs.byteOffset, (l.count * REC) >> 1);
+      const k = l.size / 65536;
+      for (let i = 0; i < l.count; i++) {
+        const b = i * 7;
+        out.push([l.origin.x + u16[b] * k, l.origin.y + u16[b + 1] * k, l.origin.z + u16[b + 2] * k, l.sf ? l.sf[i] : NaN]);
+      }
+    }
+    return out;
+  };
+  const key = q => q[0].toFixed(4) + ',' + q[1].toFixed(4) + ',' + q[2].toFixed(4);
+  const before = read();
+  const bnd = v.bounds();
+  const c = [bnd.min.x + 2.5, bnd.min.y + 2.5, bnd.min.z + 0.5];
+  const half = [1.7, 1.7, 1.2];
+  const region = { id: 'align', kind: 'box', role: 'keep', center: c, half, radius: half[0], quat: [0, 0, 0, 1] };
+  // which points a CPU test says survive
+  const want = new Map();
+  for (const q of before) {
+    if (Math.abs(q[0] - c[0]) <= half[0] && Math.abs(q[1] - c[1]) <= half[1] && Math.abs(q[2] - c[2]) <= half[2]) want.set(key(q), q[3]);
+  }
+  v.applyRegions([region], false);          // the path that carried the bug
+  const after = read();
+  let wrong = 0, unexpected = 0;
+  for (const q of after) {
+    const w = want.get(key(q));
+    if (w === undefined) unexpected++;
+    else if (Math.abs(w - q[3]) > 1e-6) wrong++;
+  }
+  return { want: want.size, kept: after.length, wrong, unexpected, total: before.length };
+});
+console.log('ALIGN', JSON.stringify(align));
+ok('record=false keeps the field lined up',
+   align.want > 100 && align.kept === align.want && align.wrong === 0 && align.unexpected === 0,
+   `${align.kept} kept of ${align.total} (CPU said ${align.want}) · ${align.wrong} values misplaced, ${align.unexpected} unexpected`);
+
+// ---------------------------------------------------------------- the CloudCompare filters
+// The numbers are checked natively in anatest against a transcription of CloudCompare's own
+// code. What is checked here is that the panel and the agent reach that code with the right
+// arguments, which is where the settings actually get lost.
+const filterUi = await p.evaluate(() => {
+  const el = (id) => document.getElementById(id);
+  return {
+    have: ['k-annbmode', 'k-annradius', 'k-anerrmode', 'k-annabs', 'k-annrip'].filter(id => !!el(id)),
+    neighbourhood: el('k-annbmode')?.value,
+    threshold: el('k-anerrmode')?.value,
+    removeIsolated: el('k-annrip')?.checked,
+    nSigma: Number(el('k-ansigma')?.value),
+    options: Array.from(el('k-annbmode')?.options ?? []).map(o => o.value)
+      .concat(Array.from(el('k-anerrmode')?.options ?? []).map(o => o.value)),
+  };
+});
+ok('the noise filter exposes every CloudCompare option', filterUi.have.length === 5, filterUi.have.join(', '));
+ok('and starts on CloudCompare\'s defaults',
+   filterUi.neighbourhood === 'radius' && filterUi.threshold === 'relative' && filterUi.removeIsolated === false && filterUi.nSigma === 1,
+   `neighbourhood ${filterUi.neighbourhood}, threshold ${filterUi.threshold}, removeIsolated ${filterUi.removeIsolated}, nSigma ${filterUi.nSigma}`);
+ok('both neighbourhood modes and both threshold modes are offered',
+   ['radius', 'knn', 'relative', 'absolute'].every(o => filterUi.options.includes(o)), filterUi.options.join(', '));
+
+// the arguments the panel would send, read from the same function the button uses
+const sent = await p.evaluate(() => {
+  const before = window.__app.noiseArgs();
+  document.getElementById('k-annbmode').value = 'knn';
+  document.getElementById('k-annbmode').dispatchEvent(new Event('change'));
+  document.getElementById('k-anerrmode').value = 'absolute';
+  document.getElementById('k-anerrmode').dispatchEvent(new Event('change'));
+  document.getElementById('k-annrip').checked = true;
+  document.getElementById('k-annrip').dispatchEvent(new Event('change'));
+  const after = window.__app.noiseArgs();
+  return { before, after };
+});
+ok('the panel sends the defaults as CloudCompare states them',
+   sent.before.useKnn === false && sent.before.useAbsoluteError === false && sent.before.removeIsolated === false && sent.before.sigma === 1,
+   JSON.stringify(sent.before));
+ok('and changing the controls changes what it sends',
+   sent.after.useKnn === true && sent.after.useAbsoluteError === true && sent.after.removeIsolated === true,
+   JSON.stringify(sent.after));
+
+// the agent surface, over the real dispatcher
+const agentNoise = await p.evaluate(() => window.__app.agentRun('analysis', {
+  op: 'noise', neighbourhood: 'knn', neighbours: 12, nSigma: 2, removeIsolated: true,
+}));
+console.log('AGENT NOISE', JSON.stringify(agentNoise.params), `removed ${agentNoise.removed} of ${agentNoise.of}`);
+ok('an agent can drive the noise filter', agentNoise.op === 'noise' && agentNoise.of > 100 && agentNoise.kept + agentNoise.removed === agentNoise.of,
+   `${agentNoise.removed} removed of ${agentNoise.of}`);
+ok('and its arguments arrive at the filter intact',
+   agentNoise.params.neighbourhood === 'knn' && agentNoise.params.knn === 12
+   && agentNoise.params.nSigma === 2 && agentNoise.params.removeIsolated === true,
+   JSON.stringify(agentNoise.params));
+// the panel was left on knn + absolute + remove-isolated a moment ago; an agent that says
+// nothing must still get CloudCompare's defaults, not whatever the panel is showing
+const agentDefaults = await p.evaluate(() => window.__app.agentRun('analysis', { op: 'noise' }));
+ok('an agent that gives no options gets CloudCompare\'s defaults, not the panel\'s state',
+   agentDefaults.params.neighbourhood === 'radius' && agentDefaults.params.threshold === 'relative'
+   && agentDefaults.params.removeIsolated === false && agentDefaults.params.nSigma === 1
+   && agentDefaults.params.knn === 8,
+   JSON.stringify(agentDefaults.params));
+await p.evaluate(() => window.__app.undoEdit());
+await p.waitForTimeout(300);
+await p.evaluate(() => window.__app.undoEdit());
+await p.waitForTimeout(300);
+
+const agentSor = await p.evaluate(() => window.__app.agentRun('analysis', { op: 'sor', neighbours: 8, nSigma: 1 }));
+console.log('AGENT SOR', JSON.stringify(agentSor.params), `removed ${agentSor.removed}, cut ${agentSor.cutOff}`);
+ok('an agent can drive the SOR filter', agentSor.op === 'sor' && agentSor.params.knn === 8 && agentSor.params.nSigma === 1,
+   JSON.stringify(agentSor.params));
+ok('and it reports the mean and the cut-off it used',
+   typeof agentSor.meanNeighbourDistance === 'number' && typeof agentSor.cutOff === 'number'
+   && agentSor.cutOff > agentSor.meanNeighbourDistance,
+   `mean ${agentSor.meanNeighbourDistance} m, cut ${agentSor.cutOff} m`);
+await p.evaluate(() => window.__app.undoEdit());
+await p.waitForTimeout(300);
+
+const tool = await p.evaluate(async () => {
+  const r = await fetch('/mcp.mjs');       // the bundled server carries tools.json inline
+  const src = await r.text();
+  return { hasTool: src.includes('viewer_analysis'), hasNoiseOpts: src.includes('removeIsolated') && src.includes('absoluteError') };
+});
+ok('viewer_analysis is in the shipped MCP server', tool.hasTool, '');
+ok('with the noise filter options', tool.hasNoiseOpts, '');
+
+// ---------------------------------------------------------------- tiling
+// A cloud too big to index in one go is analysed one spatial tile at a time, each tile fed
+// its own leaves and then the leaves around it as context. The answer has to be the same as
+// the whole cloud's, point for point, or the tile edges would show. The cap is lowered here
+// so the fixture takes several tiles.
+await p.setInputFiles('#file-input', bigPly);
+for (let i = 0; i < 120; i++) {
+  await p.waitForTimeout(1000);
+  const st = await p.evaluate(() => ({ n: window.__viewer?.loaded ?? 0, modal: !document.getElementById('modal')?.classList.contains('hidden'),
+    btns: [...document.querySelectorAll('#modal-btns button')].map(b => b.textContent) }));
+  // the fixture before this one has unsaved edits on it, so opening asks first
+  if (st.modal) {
+    console.log('  modal while loading:', JSON.stringify(st.btns));
+    for (const label of ['Open anyway', 'Not now', 'Replace']) {
+      try { await p.click(`#modal-btns button:has-text("${label}")`, { timeout: 1500 }); break; } catch {}
+    }
+  }
+  if (st.n >= BIG_N - 5) break;
+  if (i === 119) throw new Error(`the tiling fixture never loaded, ${st.n} points`);
+}
+await idle();
+const loadedNow = await p.evaluate(() => window.__viewer.loaded);
+const leafCount = await p.evaluate(() => window.__viewer.cells.leavesForMask().length);
+console.log(`TILING FIXTURE ${loadedNow.toLocaleString('en-GB')} points in ${leafCount} leaves`);
+ok('the tiling fixture is big enough to have several leaves', leafCount >= 4, `${leafCount} leaves`);
+const cap = Math.floor(loadedNow / 3);
+// a checksum of what survived: the quantised coordinates of every remaining point
+const digest = () => p.evaluate(() => {
+  let n = 0, h = 0;
+  for (const l of window.__viewer.cells.leavesForMask()) {
+    const recs = l.readback(window.__viewer.cells.gl2);
+    const u16 = new Uint16Array(recs.buffer, recs.byteOffset, (l.count * 14) >> 1);
+    for (let i = 0; i < l.count; i++) {
+      const q = i * 7;
+      h = (Math.imul(h, 31) + u16[q] + Math.imul(u16[q + 1], 3) + Math.imul(u16[q + 2], 7)) | 0;
+    }
+    n += l.count;
+  }
+  return { n, h };
+});
+const runOp = async (args, atCap) => {
+  const r = await p.evaluate(async ([a, c]) => {
+    window.__app.anaMaxPoints = c;
+    try { return await window.__app.agentRun('analysis', a); }
+    finally { window.__app.anaMaxPoints = 0; }
+  }, [args, atCap]);
+  await idle();
+  const d = await digest();
+  await p.evaluate(() => window.__app.undoEdit());
+  await p.waitForTimeout(350);
+  return { ...r, ...d };
+};
+for (const args of [
+  { op: 'sor', neighbours: 8, nSigma: 1 },
+  { op: 'noise', neighbourhood: 'radius', removeIsolated: true },
+  { op: 'duplicates', tolerance: 0.02 },
+  { op: 'subsample', spacing: 0.12 },
+]) {
+  const whole = await runOp(args, 0);
+  const tiled = await runOp(args, cap);
+  ok(`${args.op} takes several tiles under a low cap`, (tiled.tiles ?? 1) > 1, `${tiled.tiles ?? 1} tiles`);
+  ok(`tiled ${args.op} removes exactly what the whole cloud does`,
+     whole.removed === tiled.removed && whole.n === tiled.n && whole.h === tiled.h,
+     `${whole.removed} against ${tiled.removed} removed, checksum ${whole.h === tiled.h ? 'equal' : 'differs'}`);
+  if (args.op === 'sor') {
+    ok('and the tiled SOR cut-off is the cloud\'s own',
+       Math.abs(whole.cutOff - tiled.cutOff) < 1e-6 && Math.abs(whole.meanNeighbourDistance - tiled.meanNeighbourDistance) < 1e-6,
+       `cut ${whole.cutOff} against ${tiled.cutOff}`);
+  }
+}
+// a per-point measure has nothing to agree on, but its edges still need the context points
+const vert = await p.evaluate(async (c) => {
+  const read = () => window.__viewer.cells.leavesForMask().map(l => l.sf ? Array.from(l.sf) : []).flat();
+  await window.__app.analysis('feature', { name: 'verticality', k: 16, radius: 0.1 }, 'verticality');
+  const whole = read();
+  window.__app.anaMaxPoints = c;
+  try { await window.__app.analysis('feature', { name: 'verticality', k: 16, radius: 0.1 }, 'verticality'); }
+  finally { window.__app.anaMaxPoints = 0; }
+  const tiled = read();
+  // a point with too few neighbours has no value at all, and NaN has to match NaN
+  let worst = 0, odd = 0;
+  for (let i = 0; i < whole.length; i++) {
+    const a = whole[i], c = tiled[i];
+    if (Number.isNaN(a) || Number.isNaN(c)) { if (Number.isNaN(a) !== Number.isNaN(c)) odd++; continue; }
+    worst = Math.max(worst, Math.abs(a - c));
+  }
+  return { worst, odd, n: whole.length };
+}, cap);
+ok('tiled verticality matches the whole cloud', vert.worst < 1e-6 && vert.odd === 0 && vert.n > 0,
+   `worst ${vert.worst.toExponential(2)} over ${vert.n} points, ${vert.odd} with a value on one side only`);
+await p.evaluate(() => document.getElementById('k-sfclear')?.click());
+
+// ---------------------------------------------------------------- refusing honestly
+// Connected components is the one that cannot be tiled: a cluster can run the length of the
+// cloud, so it needs every point in one index and refuses past the cap. The main thread
+// posts leaves without waiting, so more arrive after the refusal; those used to throw on a
+// null analyser and the second error overwrote the first, leaving the user with "Cannot read
+// properties of null (reading 'add_leaf')" instead of the reason.
+const refusal = await p.evaluate(async (c) => {
+  window.__app.anaMaxPoints = c;
+  try {
+    await window.__app.agentRun('analysis', { op: 'components', radius: 0.1 });
+    return { message: null };
+  } catch (e) {
+    return { message: String(e?.message ?? e), clean: document.getElementById('v-analysis')?.textContent?.trim() ?? '' };
+  } finally { window.__app.anaMaxPoints = 0; }
+}, cap);
+console.log('REFUSAL', JSON.stringify(refusal));
+ok('an oversized whole-cloud run is refused', !!refusal.message, refusal.message ?? 'it was not refused');
+ok('and never with the null-analyser message', !/Cannot read properties of null/.test(refusal.message ?? ''),
+   (refusal.message ?? '').slice(0, 80));
+ok('the message names the cap and the point count',
+   /[\d,.]+M? points is past the [\d,.]+M? this device/.test(refusal.message ?? ''), refusal.message ?? '');
+
+// and the filters that used to be refused now run at the same cap
+const cleanLine = await p.evaluate(async (c) => {
+  window.__app.anaMaxPoints = c;
+  try { return await window.__app.agentRun('analysis', { op: 'sor', neighbours: 8, nSigma: 1 }); }
+  finally { window.__app.anaMaxPoints = 0; }
+}, cap);
+ok('SOR runs at a cap that used to refuse it', cleanLine.removed >= 0 && (cleanLine.tiles ?? 1) > 1,
+   `${cleanLine.removed} removed over ${cleanLine.tiles} tiles`);
+await p.evaluate(() => window.__app.undoEdit());
+await p.waitForTimeout(300);
+
+await p.waitForTimeout(400); await p.screenshot({ path: 'shots/analysis-done.png' });
+console.log(fails ? `\n${fails} CHECK(S) FAILED` : '\nALL CHECKS PASSED');
+await b.close();
+process.exit(fails ? 1 : 0);
