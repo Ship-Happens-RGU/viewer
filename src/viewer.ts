@@ -68,10 +68,8 @@ class Fly {
   private dragging = false; private lx = 0; private ly = 0;
   speed = 2.0;
   private cam: THREE.PerspectiveCamera;
-  private el: HTMLElement;
   constructor(cam: THREE.PerspectiveCamera, el: HTMLElement, onMove: () => void) {
     this.cam = cam;
-    this.el = el;
     el.addEventListener('pointerdown', e => { if (!this.enabled) return; this.dragging = true; this.lx = e.clientX; this.ly = e.clientY; el.setPointerCapture(e.pointerId); });
     el.addEventListener('pointermove', e => {
       if (!this.enabled || !this.dragging) return;

@@ -843,7 +843,7 @@ export class CellRenderer {
   /** Put every leaf of an undo record back. `fetch(i)` supplies the dropped records of entry i (RAM or disk). */
   async undoApply(rec: UndoRecord, fetch: (i: number) => Promise<Uint8Array> | Uint8Array): Promise<number> {
     const gl = this.gl;
-    const order = rec.leaves.map((e, i) => i).sort((a, b) => rec.leaves[a].index - rec.leaves[b].index);
+    const order = rec.leaves.map((_e, i) => i).sort((a, b) => rec.leaves[a].index - rec.leaves[b].index);
     for (const i of order) {
       const e = rec.leaves[i];
       const gone = await fetch(i);
