@@ -283,11 +283,11 @@ body {
   display: grid;
   place-items: center;
   z-index: 10;
-  background: radial-gradient(60% 50% at 50% 45%, #1c2127, var(--brand-background));
+  background: var(--brand-background);
 }
 
 #drop.drag {
-  background: radial-gradient(60% 50% at 50% 45%, #152b36, var(--brand-background));
+  background: var(--brand-background);
 }
 
 .card {
@@ -788,6 +788,22 @@ body {
   #panel {
     max-height: 78vh;
   }
+}
+
+.viewer-root .bp6-button.on,
+.viewer-root .bp6-button-group .bp6-button.on {
+  background-color: var(--bp-intent-primary-rest) !important;
+  color: var(--bp-intent-primary-foreground) !important;
+  font-weight: 500;
+}
+
+.viewer-root .row .bp6-html-select {
+  margin-left: auto;
+}
+
+.viewer-root .row .bp6-control {
+  margin-bottom: 0 !important;
+  margin-left: auto;
 }
 
 /* Blueprint Segmented Button Group */
