@@ -282,7 +282,18 @@ async function askColumns(f: File): Promise<{ map: any; delim: string; skip: num
 function onWorker(ev: MessageEvent) {
   const m = ev.data;
   if (m.type === 'meta') onMeta(m);
-  else if (m.type === 'plan') $('ld-stat').textContent = m.stride > 1 ? `decoding — keeping 1 in ${m.stride}, ${fmt(m.willKeep)} points` : `decoding all ${fmt(m.willKeep)} points`;
+  else if (m.type === 'plan') {
+    if (m.stride) {
+      const kLoad = document.getElementById('k-load') as HTMLSelectElement | null;
+      if (kLoad && kLoad.value !== String(m.stride)) {
+        kLoad.value = String(m.stride);
+      }
+    }
+    const note = m.autoAdjusted ? ' (auto-adapted for device memory)' : '';
+    $('ld-stat').textContent = m.stride > 1
+      ? `decoding — keeping 1 in ${m.stride}, ${fmt(m.willKeep)} points${note}`
+      : `decoding all ${fmt(m.willKeep)} points`;
+  }
   else if (m.type === 'preview') {
     const u8 = new Uint8Array(m.block);
     const u16 = new Uint16Array(m.block.byteLength >> 1); new Uint8Array(u16.buffer).set(u8.subarray(0, u16.length * 2));
@@ -4324,10 +4335,28 @@ document.querySelectorAll<HTMLElement>('#panel .grp').forEach((g, i) => {
   const stored = localStorage.getItem(key); g.classList.toggle('closed', stored ? stored === '1' : defaultClosed);
   h.addEventListener('click', () => { g.classList.toggle('closed'); localStorage.setItem(key, g.classList.contains('closed') ? '1' : '0'); });
 });
+let lowFpsCount = 0;
+
 viewer.onStats = () => {
   const s = viewer.stats;
   $('v-stats').textContent = `${fmt(s.pointsDrawn)} drawn · ${s.leavesDrawn}/${s.leavesVisible} cells · ${viewer.frameMs.toFixed(1)} ms`;
-  if (viewer.fps) $('tb-fps').textContent = `${viewer.fps.toFixed(0)} fps`;
+  if (viewer.fps) {
+    $('tb-fps').textContent = `${viewer.fps.toFixed(0)} fps`;
+
+    // Adaptive performance profiling: If the device drops below 22 FPS over sustained movement,
+    // automatically adapt the point rendering budget so navigation remains smooth and fluid.
+    if (viewer.fps < 22 && viewer.fps > 0) {
+      lowFpsCount++;
+      if (lowFpsCount > 80 && knobs.budget > 2_000_000) {
+        knobs.budget = Math.max(2_000_000, Math.round(knobs.budget * 0.75));
+        const kBudget = document.getElementById('k-budget') as HTMLSelectElement | null;
+        if (kBudget) kBudget.value = String(knobs.budget);
+        lowFpsCount = 0;
+      }
+    } else if (viewer.fps >= 50) {
+      lowFpsCount = Math.max(0, lowFpsCount - 1);
+    }
+  }
 };
 
 push();

@@ -23,7 +23,8 @@ self.onmessage = async (ev: MessageEvent) => {
     const kind = m.kind ?? sniff(file.name, readRange);
     if (!['ply', 'las', 'laz', 'ascii', 'ptx'].includes(kind)) throw new Error(`Unrecognised file type: ${file.name}`);
 
-    const stride = Math.max(1, m.stride | 0);
+    const userStride = Math.max(1, m.stride | 0);
+    let stride = userStride;
     const t0 = performance.now();
     let sink: PointSink | null = null;
     let total = 0, lastProgress = 0;
@@ -32,6 +33,17 @@ self.onmessage = async (ev: MessageEvent) => {
 
     const onMeta = (im: any) => {
       total = im.points;
+      const memLimit = m.memLimit ?? 3e9;
+      const bytesPerPoint = 14 * 1.25;
+      let autoAdjusted = false;
+
+      if (im.points > 0 && (im.points / stride) * bytesPerPoint > memLimit * 0.9) {
+        const candidateStrides = [1, 2, 4, 10, 30];
+        const safe = candidateStrides.find((s) => (im.points / s) * bytesPerPoint <= memLimit * 0.85);
+        stride = safe ?? Math.max(userStride, Math.ceil((im.points * bytesPerPoint) / (memLimit * 0.85)));
+        autoAdjusted = stride !== userStride;
+      }
+
       const meta = {
         guid: null, library: `import:${im.format}`, images: 0, stations: im.stations ?? [],
         scans: [{ name: im.name, points: im.points, bounds: im.bounds, translation: im.translation,
@@ -40,9 +52,9 @@ self.onmessage = async (ev: MessageEvent) => {
                   cartesian: true, spherical: false, fields: 0 }],
       };
       post({ type: 'meta', meta, openMs: performance.now() - t0, bytesPulled: 0 });
-      post({ type: 'plan', stride, willKeep: Math.floor(im.points / stride) });
+      post({ type: 'plan', stride, willKeep: Math.floor(im.points / stride), autoAdjusted });
       const b = im.bounds;
-      sink = new PointSink(new Float64Array([b[0], b[2], b[4], b[1], b[3], b[5]]), im.points / stride, m.memLimit ?? 3e9, 1_200_000);
+      sink = new PointSink(new Float64Array([b[0], b[2], b[4], b[1], b[3], b[5]]), im.points / stride, memLimit, 1_200_000);
     };
     const onBatch = (bt: any) => {
       if (!sink) return;

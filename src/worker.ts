@@ -30,10 +30,27 @@ self.onmessage = async (ev: MessageEvent) => {
     post({ type: 'meta', meta, openMs: performance.now() - t0, bytesPulled });
 
     const scanIndex: number = msg.scanIndex ?? 0;
-    const stride: number = Math.max(1, msg.stride | 0);
+    const userStride: number = Math.max(1, msg.stride | 0);
     const memLimit: number = msg.memLimit ?? 3.0e9;
     const scan = meta.scans[scanIndex];
-    post({ type: 'plan', stride, willKeep: Math.floor(scan.points / stride) });
+
+    // Auto-calculate safe load fraction if requested stride exceeds device memory limit
+    const bytesPerPoint = 14 * 1.25;
+    const totalPoints = scan?.points ?? 0;
+    let stride = userStride;
+    let autoAdjusted = false;
+
+    if (totalPoints > 0) {
+      const estimatedBytes = (totalPoints / stride) * bytesPerPoint;
+      if (estimatedBytes > memLimit * 0.9) {
+        const candidateStrides = [1, 2, 4, 10, 30];
+        const safe = candidateStrides.find((s) => (totalPoints / s) * bytesPerPoint <= memLimit * 0.85);
+        stride = safe ?? Math.max(userStride, Math.ceil((totalPoints * bytesPerPoint) / (memLimit * 0.85)));
+        autoAdjusted = stride !== userStride;
+      }
+    }
+
+    post({ type: 'plan', stride, willKeep: Math.floor(scan.points / stride), autoAdjusted });
 
     const tD = performance.now();
     let lastProgress = 0;
