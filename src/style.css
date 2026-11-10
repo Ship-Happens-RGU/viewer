@@ -113,6 +113,17 @@ body {
   touch-action: manipulation;
 }
 
+.viewer-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--brand-background);
+  color: var(--text-high-emphasis);
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+}
+
 .mono {
   font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
@@ -123,7 +134,7 @@ body {
 }
 
 #gl {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
@@ -133,7 +144,7 @@ body {
 
 /* Blueprint Navbar / Top Bar */
 #topbar {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
@@ -183,7 +194,7 @@ body {
 }
 
 /* Blueprint 6 Button Styling */
-button {
+.viewer-root button {
   font-family: 'Roboto', sans-serif;
   font-size: 13px;
   font-weight: 500;
@@ -198,7 +209,7 @@ button {
   line-height: 1.2;
 }
 
-button.primary {
+.viewer-root button.primary {
   background-color: var(--bp-intent-primary-rest);
   color: var(--bp-intent-primary-foreground);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -208,15 +219,15 @@ button.primary {
   font-size: 13px;
 }
 
-button.primary:hover {
+.viewer-root button.primary:hover {
   background-color: var(--bp-intent-primary-hover);
 }
 
-button.primary:active {
+.viewer-root button.primary:active {
   background-color: var(--bp-intent-primary-active);
 }
 
-button.ghost {
+.viewer-root button.ghost {
   background-color: var(--brand-primary-variant);
   color: var(--text-high-emphasis);
   border: 1px solid #383838;
@@ -224,18 +235,18 @@ button.ghost {
   padding: 5px 12px;
 }
 
-button.ghost:hover {
+.viewer-root button.ghost:hover {
   background-color: #303030;
   border-color: var(--brand-secondary);
   color: #ffffff;
 }
 
-button.ghost:active {
+.viewer-root button.ghost:active {
   background-color: #222222;
 }
 
-button.ghost:disabled,
-button.primary:disabled {
+.viewer-root button.ghost:disabled,
+.viewer-root button.primary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   pointer-events: none;
@@ -250,12 +261,12 @@ button.primary:disabled {
   flex: none;
 }
 
-button.wide {
+.viewer-root button.wide {
   width: 100%;
   margin-bottom: 6px;
 }
 
-button.primary.wide {
+.viewer-root button.primary.wide {
   margin-top: 4px;
 }
 
@@ -267,7 +278,7 @@ button.primary.wide {
 /* Overlays & Blueprint Cards */
 #drop,
 #loading {
-  position: fixed;
+  position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
@@ -354,7 +365,7 @@ button.primary.wide {
 
 /* Right Controls Panel (Blueprint Dark Card Surface) */
 #panel {
-  position: fixed;
+  position: absolute;
   top: 56px;
   right: 10px;
   bottom: 10px;
@@ -458,7 +469,7 @@ button.primary.wide {
 }
 
 /* Blueprint 6 Select & Inputs */
-select {
+.viewer-root select {
   background-color: var(--brand-primary-variant);
   color: var(--text-high-emphasis);
   border: 1px solid #3a3a3a;
@@ -471,12 +482,12 @@ select {
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
-select:focus {
+.viewer-root select:focus {
   border-color: var(--brand-secondary-variant);
   outline: none;
 }
 
-input[type='range'] {
+.viewer-root input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   height: 4px;
@@ -486,7 +497,7 @@ input[type='range'] {
   min-width: 70px;
 }
 
-input[type='range']::-webkit-slider-thumb {
+.viewer-root input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 14px;
   height: 14px;
@@ -497,7 +508,7 @@ input[type='range']::-webkit-slider-thumb {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
-input[type='checkbox'] {
+.viewer-root input[type='checkbox'] {
   accent-color: var(--brand-secondary);
   width: 15px;
   height: 15px;
@@ -506,9 +517,9 @@ input[type='checkbox'] {
   flex: none;
 }
 
-input[type='number'],
-input[type='text'],
-input.txt {
+.viewer-root input[type='number'],
+.viewer-root input[type='text'],
+.viewer-root input.txt {
   background-color: var(--brand-primary-variant);
   color: var(--text-high-emphasis);
   border: 1px solid #3a3a3a;
@@ -522,14 +533,14 @@ input.txt {
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
-input.txt {
+.viewer-root input.txt {
   font-family: 'Roboto', sans-serif;
   width: 148px;
 }
 
-input[type='number']:focus,
-input[type='text']:focus,
-input.txt:focus {
+.viewer-root input[type='number']:focus,
+.viewer-root input[type='text']:focus,
+.viewer-root input.txt:focus {
   border-color: var(--brand-secondary-variant);
   box-shadow: 0 0 0 1px var(--brand-secondary-variant);
   outline: none;
@@ -548,7 +559,7 @@ input.txt:focus {
   margin-bottom: 8px;
 }
 
-textarea {
+.viewer-root textarea {
   background-color: var(--brand-primary-variant);
   color: var(--text-high-emphasis);
   border: 1px solid #3a3a3a;
@@ -561,7 +572,7 @@ textarea {
   resize: vertical;
 }
 
-textarea:focus {
+.viewer-root textarea:focus {
   border-color: var(--brand-secondary-variant);
   outline: none;
 }
@@ -589,7 +600,7 @@ textarea:focus {
 
 /* Error Toast (Blueprint Danger Intent) */
 #err {
-  position: fixed;
+  position: absolute;
   left: 50%;
   bottom: 22px;
   transform: translateX(-50%);
@@ -931,7 +942,7 @@ textarea:focus {
 
 /* Measurement Labels & Coordinate Readout */
 #labels {
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 4;
@@ -1056,7 +1067,7 @@ textarea:focus {
 }
 
 #coord {
-  position: fixed;
+  position: absolute;
   left: 14px;
   bottom: 14px;
   z-index: 5;
@@ -1083,7 +1094,7 @@ textarea:focus {
 /* Blueprint Dialog / Modal & Busy Overlay */
 #modal,
 #busy {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 30;
   display: grid;
@@ -1282,7 +1293,7 @@ body.has-region button.region-active {
 
 /* Touch Toolbar & Joystick */
 #toolbar {
-  position: fixed;
+  position: absolute;
   left: 50%;
   transform: translateX(-50%);
   bottom: calc(58px + env(safe-area-inset-bottom));
@@ -1314,7 +1325,7 @@ body.has-region button.region-active {
 }
 
 #joy {
-  position: fixed;
+  position: absolute;
   left: 16px;
   bottom: calc(112px + env(safe-area-inset-bottom));
   z-index: 7;
@@ -1389,7 +1400,7 @@ body.has-region button.region-active {
 
 /* Freehand Selection Overlay */
 #seg {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
@@ -1413,7 +1424,7 @@ body.has-region button.region-active {
 
 #segbar,
 #placebar {
-  position: fixed;
+  position: absolute;
   left: 50%;
   transform: translateX(-50%);
   bottom: max(20px, env(safe-area-inset-bottom));

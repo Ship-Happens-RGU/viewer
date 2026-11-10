@@ -4288,4 +4288,5 @@ refreshCachedList();
   get anaTileBudget() { return anaTileFixed || Math.max(1.2e6, Math.min(anaCap(), Math.floor(POOL_BYTES / (anaPool() * BYTES_PER_POINT)))); }, noiseArgs, get anaUi() { return anaUi; },
   importMesh, measureActiveMesh, smoothActiveMesh, decimateActiveMesh, sampleMeshPoints, distanceToMesh,
   replaceMesh, flipMesh, meshEntities, meshBlob, saveMesh, refreshMeshUI, setDisplay,
+  modelF32, get lastFit() { return lastFit; }, defaultVoxelCm, pagedHit, image, get lastRender() { return lastRender; }, runView, runSection,
   get meshFile() { return meshFile; }, get meshInfo() { return meshInfo; } };

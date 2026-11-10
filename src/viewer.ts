@@ -33,9 +33,11 @@ function occlusion(): { right: number; bottom: number } {
   const panel = document.getElementById('panel');
   if (!panel || panel.classList.contains('hidden')) return { right: 0, bottom: 0 };
   const r = panel.getBoundingClientRect();
-  const coversBottom = r.bottom >= innerHeight - 2 && r.width >= innerWidth - 2;
-  if (coversBottom) return { right: 0, bottom: Math.max(0, innerHeight - r.top) };
-  return { right: Math.max(0, innerWidth - r.left), bottom: 0 };
+  const p = panel.parentElement;
+  const c = p && p !== document.body ? p.getBoundingClientRect() : { right: innerWidth, bottom: innerHeight, width: innerWidth };
+  const coversBottom = r.bottom >= c.bottom - 2 && r.width >= c.width - 2;
+  if (coversBottom) return { right: 0, bottom: Math.max(0, c.bottom - r.top) };
+  return { right: Math.max(0, c.right - r.left), bottom: 0 };
 }
 /** True when a matrix's upper-left 3x3 is the identity — a pure translation. */
 function sameLinear(m: THREE.Matrix4): boolean {
