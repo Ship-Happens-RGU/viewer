@@ -1,42 +1,26 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
-<html lang="en">
+<html lang="en" class="dark bp6-dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#05090b">
+<meta name="theme-color" content="#111111">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="e57view">
+<meta name="apple-mobile-web-app-title" content="ShipHappens Viewer">
 <meta name="description" content="View E57 laser scans in the browser. Nothing is uploaded.">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icon-180.png">
-<title>e57view</title>
-<script>
-(function () {
-  var id = 'G-WL0V1TLGPW';
-  var h = location.hostname;
-  if (h === 'localhost' || h === '127.0.0.1') return;
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){ dataLayer.push(arguments); }
-  window.gtag = gtag;
-  gtag('js', new Date());
-  gtag('config', id, { anonymize_ip: true, page_location: location.origin + location.pathname });
-  var s = document.createElement('script');
-  s.async = true;
-  s.src = 'https://www.googletagmanager.com/gtag/js?id=' + id;
-  document.head.appendChild(s);
-})();
-</script>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2305090b'/%3E%3Ccircle cx='10' cy='12' r='2.4' fill='%2346c6d2'/%3E%3Ccircle cx='20' cy='9' r='1.8' fill='%2346c6d2'/%3E%3Ccircle cx='23' cy='19' r='2.6' fill='%232b7a84'/%3E%3Ccircle cx='13' cy='22' r='2' fill='%2346c6d2'/%3E%3C/svg%3E">
+<title>ShipHappens Viewer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23111111'/%3E%3Ccircle cx='10' cy='12' r='2.4' fill='%2330aedb'/%3E%3Ccircle cx='20' cy='9' r='1.8' fill='%2330aedb'/%3E%3Ccircle cx='23' cy='19' r='2.6' fill='%230093c9'/%3E%3Ccircle cx='13' cy='22' r='2' fill='%2330aedb'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&family=Roboto:wght@300;400;500;700&display=swap">
 </head>
-<body>
+<body class="bp6-dark">
   <canvas id="gl"></canvas>
 
-  <div id="topbar" class="hidden">
+  <div id="topbar" class="bp6-navbar bp6-dark hidden">
     <span class="name" id="tb-name">—</span>
     <span class="pill hidden" id="tb-layer"></span>
     <span class="dot"></span>
@@ -555,117 +539,6 @@
         <p class="hint"><b>Area</b> and <b>volume</b> are measured through the layer's transform. A volume only means anything when the mesh is closed, so the boundary edge count is reported next to it. <b>Smooth</b> is Taubin with Keep volume on and plain Laplacian with it off. <b>Decimate</b> is vertex clustering at the cell you set, which is fast but cannot hit an exact triangle count.</p>
         <p class="hint"><b>Distance from this cloud</b> measures every point of the active point layer to the nearest triangle of the mesh layer you pick, and writes it as a scalar field.</p>
       </details>
-    </div>
-
-    <div class="grp" data-grp="agent">
-      <h3>Agent</h3>
-
-      <!-- Three ways in, one at a time. Each tab shows a dot when its path is live, so you can
-           tell something is running without opening it. -->
-      <div class="tabs" id="agent-tabs" role="tablist">
-        <button class="tab on" id="tab-mcp" role="tab" data-tab="mcp">MCP<i class="dot"></i></button>
-        <button class="tab web-only" id="tab-http" role="tab" data-tab="http">HTTP<i class="dot"></i></button>
-        <button class="tab" id="tab-script" role="tab" data-tab="script">Scripts</button>
-        <button class="tab" id="tab-log" role="tab" data-tab="log">Log<span class="count" id="v-logcount">0</span></button>
-      </div>
-
-      <!-- ---------------------------------------------------------------- 1. local MCP -->
-      <section class="tabpane" id="pane-mcp">
-        <p class="statusline" id="v-mcppill">not connected</p>
-        <p class="use">For an agent running on this machine: Claude Code, Codex CLI, Cursor, Claude Desktop.</p>
-
-        <div class="step web-only">
-          <b>1</b>
-          <div>
-            <button id="k-mcpget" class="ghost wide">Download the server</button>
-            <p class="hint">One file, Node 20. A web page cannot start it for you.</p>
-            <div id="mcp-dl"></div>
-          </div>
-        </div>
-
-        <div class="step">
-          <b class="web-only">2</b>
-          <div>
-            <p class="sublabel">Your agent</p>
-            <div class="chips" id="mcp-clients"></div>
-            <select id="k-mcpclient" class="offscreen">
-              <option value="claude-code">Claude Code</option>
-              <option value="codex">Codex CLI</option>
-              <option value="cursor">Cursor</option>
-              <option value="claude-desktop">Claude Desktop</option>
-              <option value="gemini">Gemini CLI</option>
-              <option value="windsurf">Windsurf</option>
-            </select>
-            <div id="mcp-snips"></div>
-          </div>
-        </div>
-
-        <div class="step web-only">
-          <b>3</b>
-          <div>
-            <label class="row"><span>Connect</span><input type="checkbox" id="k-agent"></label>
-          </div>
-        </div>
-
-        <p class="statusline sub hidden" id="v-agent"></p>
-        <details class="sub">
-          <summary>How this works</summary>
-          <p class="hint web-only">The server is a WebSocket on <span class="mono">127.0.0.1:7337</span> that your agent starts and this tab connects to. Nothing is exposed off this machine. Chrome asks once to allow local network access.</p>
-          <p class="hint desktop-only">The app is the server. It listens on <span class="mono">127.0.0.1</span> only and opens no other socket. There is nothing to download and nothing to switch on.</p>
-          <p class="hint">An agent on this bridge can do anything this panel can do, including deleting points and writing files. The <b>Allow edits</b> switch on the HTTP tab does not apply here. If you do not want an agent editing, do not register the server.</p>
-        </details>
-      </section>
-
-      <!-- ---------------------------------------------------------------- 2. HTTP session -->
-      <section class="tabpane web-only hidden" id="pane-http">
-        <!-- before a session exists -->
-        <div id="http-idle">
-          <p class="use">For an agent running on another machine or in the cloud. It drives this tab over HTTP.</p>
-          <label class="row"><span>Allow edits</span><input type="checkbox" id="k-agentedits"></label>
-          <p class="hint">Decide this before you start. You can change it afterwards.</p>
-          <button id="k-agenturl" class="primary wide">Start session…</button>
-        </div>
-
-        <!-- while one is running -->
-        <div id="http-live" class="hidden">
-          <div class="badge" id="v-access">READ-ONLY</div>
-          <p class="badge-note" id="v-accessnote">The agent can look and measure. It cannot change or save anything.</p>
-          <label class="row"><span>Allow edits</span><input type="checkbox" id="k-agentedits2"></label>
-          <div class="snipwrap">
-            <p class="sniplabel">Connection details, token masked</p>
-            <pre class="snip" id="v-agentconn"></pre>
-            <button id="k-agentcopy" class="ghost snipcopy">Copy connection details</button>
-          </div>
-          <p class="statusline" id="v-agenturl">—</p>
-          <button id="k-agentstop" class="ghost wide">Stop session</button>
-        </div>
-
-        <details class="sub">
-          <summary>How this works</summary>
-          <p class="hint">Starting a session copies a page link plus a bearer token for <span class="mono">POST /agent</span>. <b>The token is shown once</b>, never appears in the URL, and cannot be read back. Start another session if you lose it.</p>
-          <p class="hint">A session expires after 8 hours, dies when you close this tab, and <b>Stop session</b> ends it at once. Keep this tab open.</p>
-        </details>
-      </section>
-
-      <!-- ---------------------------------------------------------------- 3. scripts -->
-      <section class="tabpane hidden" id="pane-script">
-        <p class="use">Run a saved list of agent commands with no agent connected at all.</p>
-        <button id="k-script" class="primary wide">Run script…</button>
-        <p class="statusline" id="v-script">—</p>
-        <details class="sub">
-          <summary>How this works</summary>
-          <p class="hint">A script is a JSON array of <span class="mono">{ "cmd", "args" }</span> steps, run in order against this tab. Each step's result is available to the next as <span class="mono">$last</span>. It is the same command set an agent drives, without the round trip.</p>
-        </details>
-      </section>
-      <section class="tabpane hidden" id="pane-log">
-        <p class="use">Every command an agent has run in this tab, newest first. Click one to see what it was given and what came back. Nothing is saved.</p>
-        <div class="logbar">
-          <button id="k-logcopy" class="ghost">Copy log</button>
-          <button id="k-logclear" class="ghost">Clear</button>
-        </div>
-        <div class="loglist" id="log-list"></div>
-        <p class="statusline" id="v-log">nothing yet</p>
-      </section>
     </div>
 
     <div class="grp" data-grp="measure">

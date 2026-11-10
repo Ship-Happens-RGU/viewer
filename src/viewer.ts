@@ -7,9 +7,9 @@ import { CellRenderer, pointInRegion, polyHalf, simplifyRing, PRISM_MAX_V, REC, 
 import { MeshView, type MeshData } from './meshview';
 import { Entity } from './entities';
 
-const BG = new THREE.Color(0x05090b);
-const TEAL = 0x46c6d2;
-const ROLE_COLOR: Record<string, number> = { keep: TEAL, pending: 0xf2b544, delete: 0xff7b72 };
+const BG = new THREE.Color(0x111111);
+const TEAL = 0x30aedb;
+const ROLE_COLOR: Record<string, number> = { keep: TEAL, pending: 0xf2b544, delete: 0xb00020 };
 
 export const isTouch = matchMedia('(pointer: coarse)').matches;
 export const isIOS =
@@ -51,7 +51,7 @@ function halfToFloat(h: number): number {
   if (e === 31) return f ? NaN : s * Infinity;
   return s * Math.pow(2, e - 15) * (1 + f / 1024);
 }
-function discTexture(color: string, ring = '#05090b'): THREE.Texture {
+function discTexture(color: string, ring = '#111111'): THREE.Texture {
   const c = document.createElement('canvas'); c.width = c.height = 64;
   const g = c.getContext('2d')!;
   g.beginPath(); g.arc(32, 32, 28, 0, Math.PI * 2); g.fillStyle = color; g.fill();
@@ -210,7 +210,7 @@ export class Viewer {
   private pending: THREE.Vector3 | null = null;
   private pendingMark: THREE.Sprite | null = null;
   private labelsEl = document.getElementById('labels')!;
-  private dotTex = discTexture('#46c6d2');
+  private dotTex = discTexture('#30aedb');
   private stationTex = discTexture('#f2b544', '#3a2c13');
 
   // stations / bubble
@@ -678,7 +678,7 @@ export class Viewer {
       }
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
-      const o = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x46c6d2, transparent: true, opacity: 0.95, depthTest: false }));
+      const o = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x30aedb, transparent: true, opacity: 0.95, depthTest: false }));
       this.overlay.add(o);
       this.contourLines = o;
     }
