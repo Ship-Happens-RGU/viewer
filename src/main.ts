@@ -77,7 +77,7 @@ function ioOnce(type: string): Promise<any> { return new Promise(res => ioWaiter
 let undoTail: Promise<unknown> = Promise.resolve();
 function withUndoIo<T>(fn: () => Promise<T>): Promise<T> {
   const run = undoTail.then(fn, fn);
-  undoTail = run.then(() => {}, () => {});
+  undoTail = run.then(() => { }, () => { });
   return run;
 }
 function ioOnceUndo(type: string): Promise<any> {
@@ -142,9 +142,9 @@ const histIo = {
   },
 };
 const hist = new History({ io: histIo });
-void histIo.clear().catch(() => {});
+void histIo.clear().catch(() => { });
 function idb(): Promise<IDBDatabase> { return new Promise((res, rej) => { const r = indexedDB.open('e57view', 1); r.onupgradeneeded = () => r.result.createObjectStore('handles'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
-async function idbPut(key: string, val: any) { try { const d = await idb(); d.transaction('handles', 'readwrite').objectStore('handles').put(val, key); } catch {} }
+async function idbPut(key: string, val: any) { try { const d = await idb(); d.transaction('handles', 'readwrite').objectStore('handles').put(val, key); } catch { } }
 async function idbGet(key: string): Promise<any> { try { const d = await idb(); return await new Promise(res => { const r = d.transaction('handles').objectStore('handles').get(key); r.onsuccess = () => res(r.result); r.onerror = () => res(null); }); } catch { return null; } }
 function modal(title: string, bodyHtml: string, buttons: { label: string; cls?: string; value: string }[]): Promise<string> {
   return new Promise(res => {
@@ -240,7 +240,7 @@ async function openFile(f: File, handle: any = null, add = false) {
   }
   const isImport = kind !== 'e57';
   worker = isImport ? new Worker(new URL('./import-worker.ts', import.meta.url), { type: 'module' })
-                    : new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    : new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = onWorker;
   worker.onerror = e => fail(`Decoder crashed: ${e.message || 'out of memory?'} — try a smaller "In memory" fraction.`);
   worker.postMessage({ type: 'open', file: f, scanIndex: 0, stride, memLimit: MEM_LIMIT, kind, ...(ascii ?? {}) });
@@ -297,7 +297,7 @@ function onWorker(ev: MessageEvent) {
     if (m.phase === 0) {
       const pct = Math.min(100, (m.done / total) * 100); $('ld-bar').style.width = (pct * 0.85) + '%';
       const rate = m.done / (m.elapsed / 1000), eta = Math.max(0, (total - m.done) / rate);
-      $('ld-stat').textContent = `decoding ${fmt(m.done)} · ${(rate/1e6).toFixed(1)} M pts/s · ${pct.toFixed(0)}% · ~${eta.toFixed(0)}s left`; $('tb-points').textContent = `decoding ${pct.toFixed(0)}%`;
+      $('ld-stat').textContent = `decoding ${fmt(m.done)} · ${(rate / 1e6).toFixed(1)} M pts/s · ${pct.toFixed(0)}% · ~${eta.toFixed(0)}s left`; $('tb-points').textContent = `decoding ${pct.toFixed(0)}%`;
     } else {
       const pct = fromCache ? (m.done / Math.max(m.total, 1)) * 100 : 85 + (m.done / Math.max(m.total, 1)) * 15;
       $('ld-bar').style.width = pct + '%';
@@ -314,12 +314,12 @@ function onMeta(m: any) {
   const s = meta.scans[0]; if (!s) return fail('This file contains no point clouds.');
   const b = s.bounds;
   $('ld-points').textContent = fmt(s.points);
-  $('ld-extent').textContent = b ? `${(b[1]-b[0]).toFixed(1)} × ${(b[3]-b[2]).toFixed(1)} × ${(b[5]-b[4]).toFixed(1)} m` : '—';
+  $('ld-extent').textContent = b ? `${(b[1] - b[0]).toFixed(1)} × ${(b[3] - b[2]).toFixed(1)} × ${(b[5] - b[4]).toFixed(1)} m` : '—';
   $('ld-sensor').textContent = [s.sensorVendor, s.sensorModel].filter(Boolean).join(' ') || '—';
   const bits = [s.cartesian ? 'XYZ' : 'spherical']; if (s.hasColor) bits.push('RGB'); if (s.hasIntensity) bits.push('intensity'); if (s.hasNormals) bits.push('normals');
   $('ld-fields').textContent = bits.join(' · ');
   if (s.name) $('ld-name').textContent = s.name;
-  $('ld-stat').textContent = m.fromCache ? 'reading cached cells…' : `opened in ${m.openMs.toFixed(0)} ms · ${(m.bytesPulled/1e6).toFixed(1)} MB read · ${meta.stations.length} stations`;
+  $('ld-stat').textContent = m.fromCache ? 'reading cached cells…' : `opened in ${m.openMs.toFixed(0)} ms · ${(m.bytesPulled / 1e6).toFixed(1)} MB read · ${meta.stations.length} stations`;
   ($('k-nrm') as HTMLInputElement).disabled = !s.hasNormals;
   updateNames();
   if (m.histogram) histogram = Uint32Array.from(m.histogram);
@@ -347,7 +347,7 @@ function onDone(stats: any, how: string) {
   revealViewport(); viewer.applyZRange(); autoRangeIntensity(); syncZLabels();
   const secs = (performance.now() - t0) / 1000, total = meta.scans[0].points;
   $('tb-points').textContent = `${fmt(stats.kept)} pts · ${how} in ${secs.toFixed(1)}s`;
-  $('v-loaded').textContent = `${fmt(stats.kept)} of ${fmt(total)} in memory (${((stats.kept/total)*100).toFixed(0)}%) · ${stats.leaves} cells` + (stats.droppedInvalid ? ` · ${fmt(stats.droppedInvalid)} invalid skipped` : '');
+  $('v-loaded').textContent = `${fmt(stats.kept)} of ${fmt(total)} in memory (${((stats.kept / total) * 100).toFixed(0)}%) · ${stats.leaves} cells` + (stats.droppedInvalid ? ` · ${fmt(stats.droppedInvalid)} invalid skipped` : '');
   $('loading').classList.add('hidden');
   if (meta?.scans?.[0]?.hasClassification) afterUploads(() => {
     const n = buildClassificationField();
@@ -482,7 +482,7 @@ function setMode(fly: boolean) {
   viewer.setFly(fly);
   $('k-fly').classList.toggle('on', fly); $('k-orbit').classList.toggle('on', !fly); $('gl').classList.toggle('fly', fly);
   $('v-navhint').innerHTML = fly ? '<b>W A S D</b> move · <b>Q E</b> down/up · drag to look · scroll changes speed · <b>Shift</b> ×4 · double-click walks toward a point · <b>F</b> back to orbit'
-                                 : 'Drag to orbit · scroll zooms toward the cursor · <b>double-click</b> a point to orbit around it · <b>F</b> to fly';
+    : 'Drag to orbit · scroll zooms toward the cursor · <b>double-click</b> a point to orbit around it · <b>F</b> to fly';
   $('joy').classList.toggle('hidden', !(fly && isTouch));
   updatePill(); syncToolbar();
 }
@@ -668,7 +668,7 @@ $('k-layeradd').addEventListener('click', () => addFile());
 async function addFile() {
   const anyWin = window as any;
   if (anyWin.showOpenFilePicker) {
-    try { const [h] = await anyWin.showOpenFilePicker({ types: [{ description: 'Point cloud', accept: { 'application/octet-stream': ['.e57', '.ply', '.las', '.laz', '.ptx', '.obj', '.stl', ...ASCII_EXT.map(e => '.' + e)] } }] }); openFile(await h.getFile(), h, true); } catch {}
+    try { const [h] = await anyWin.showOpenFilePicker({ types: [{ description: 'Point cloud', accept: { 'application/octet-stream': ['.e57', '.ply', '.las', '.laz', '.ptx', '.obj', '.stl', ...ASCII_EXT.map(e => '.' + e)] } }] }); openFile(await h.getFile(), h, true); } catch { }
     return;
   }
   const inp = document.createElement('input'); inp.type = 'file'; if (!isIOS) inp.accept = ['.e57', '.ply', '.las', '.laz', '.ptx', '.obj', '.stl', ...ASCII_EXT.map(e => '.' + e)].join(',');
@@ -904,7 +904,7 @@ async function runIcp() {
     throw e;
   } finally { hideBusy(); }
 }
-$('k-regicp').addEventListener('click', () => { runIcp().catch(() => {}); });
+$('k-regicp').addEventListener('click', () => { runIcp().catch(() => { }); });
 
 async function distanceToReference(signed = false) {
   const ref = refEntity(); if (!ref) return null;
@@ -926,7 +926,7 @@ async function distanceToReference(signed = false) {
     throw e;
   } finally { hideBusy(); }
 }
-$('k-regdistance').addEventListener('click', () => { distanceToReference(false).catch(() => {}); });
+$('k-regdistance').addEventListener('click', () => { distanceToReference(false).catch(() => { }); });
 
 // ------------------------------------------------------------------ regions: crop and sections
 const cropState: Region = { id: 'crop', kind: 'box', role: 'keep', center: [0, 0, 0], half: [10, 10, 10], radius: 10, quat: [0, 0, 0, 1] };
@@ -977,8 +977,8 @@ function cropReadouts() {
   $('k-cropapply').textContent = removingInside() ? 'Remove inside…' : 'Apply crop…';
   $('v-crop').textContent = cropped ? `cropped · ${fmt(viewer.loaded)} points in memory`
     : !cuts.length ? '—'
-    : removingInside() ? `~${fmt(Math.max(0, viewer.loaded - est))} removed · ${fmt(est)} kept`
-    : `~${fmt(est)} of ${fmt(viewer.loaded)} points inside`;
+      : removingInside() ? `~${fmt(Math.max(0, viewer.loaded - est))} removed · ${fmt(est)} kept`
+        : `~${fmt(est)} of ${fmt(viewer.loaded)} points inside`;
   $('v-sections').textContent = sections.length ? `${sections.length} section${sections.length > 1 ? 's' : ''} · union` : '—';
 }
 function updateCropUI(recenter = false) {
@@ -1038,11 +1038,11 @@ async function applyCrop() {
   const tail = `<p>The file on disk is not touched. <b>Undo</b> puts the points back. <b>Save as…</b> writes a copy. <b>Escape</b> cancels.</p>`;
   const ans = removing
     ? await modal('Remove the points inside?',
-        `<p>Everything inside ${shape} will be dropped from memory — roughly <b>${fmt(gone)}</b> points removed, <b>${fmt(kept)}</b> kept.</p>` + tail,
-        [{ label: 'Cancel', value: 'no' }, { label: `Remove ${fmt(gone)}`, value: 'yes', cls: 'danger' }])
+      `<p>Everything inside ${shape} will be dropped from memory — roughly <b>${fmt(gone)}</b> points removed, <b>${fmt(kept)}</b> kept.</p>` + tail,
+      [{ label: 'Cancel', value: 'no' }, { label: `Remove ${fmt(gone)}`, value: 'yes', cls: 'danger' }])
     : await modal('Apply crop?',
-        `<p>Everything outside ${shape} will be dropped from memory — roughly <b>${fmt(gone)}</b> points removed, <b>${fmt(kept)}</b> of ${fmt(viewer.loaded)} kept.</p>` + tail,
-        [{ label: 'Cancel', value: 'no' }, { label: 'Drop outside points', value: 'yes', cls: 'danger' }]);
+      `<p>Everything outside ${shape} will be dropped from memory — roughly <b>${fmt(gone)}</b> points removed, <b>${fmt(kept)}</b> of ${fmt(viewer.loaded)} kept.</p>` + tail,
+      [{ label: 'Cancel', value: 'no' }, { label: 'Drop outside points', value: 'yes', cls: 'danger' }]);
   if (ans !== 'yes') return null;
   return commitApply(cuts, removing ? 'clean' : 'crop',
     res => `${removing ? 'Remove inside' : 'Crop'} · dropped ${fmt(res.dropped)}`, () => {
@@ -1211,7 +1211,7 @@ async function saveCurrent() {
     busy('Saving…');
     await writeOutFile(r, handle);
     let cacheUpdated = false;
-    if (currentFile && fromCache) { try { await writeCache(); cacheUpdated = true; } catch {} }
+    if (currentFile && fromCache) { try { await writeCache(); cacheUpdated = true; } catch { } }
     cacheNote = '';
     await hist.clear();
     clearDirty();
@@ -1334,7 +1334,7 @@ function renderSectionList() {
     const li = document.createElement('li'); li.classList.toggle('sel', viewer.activeRegion === s.id);
     const what = s.kind === 'prism' ? `drawn · ${s.poly?.length ?? 0} sides · ${(s.half[2] * 2).toFixed(2)} m deep`
       : s.kind === 'slab' ? `${(s.half[2] * 2).toFixed(2)} m thick · z ${s.center[2].toFixed(1)}`
-      : s.kind === 'sphere' ? `r ${s.radius.toFixed(2)} m` : `box ${(s.half[0] * 2).toFixed(2)} m`;
+        : s.kind === 'sphere' ? `r ${s.radius.toFixed(2)} m` : `box ${(s.half[0] * 2).toFixed(2)} m`;
     li.innerHTML = `<span class="ok">${s.label ?? s.kind}</span> <span class="mono">${what} · ~${fmt(regionCount(s))} pts</span>`
       + `<span class="x" title="Remove this region">✕</span>`
       + `<span class="rr${s.role === 'delete' ? ' del' : ''}" title="Keep what is inside, or remove it">${s.role === 'delete' ? 'Remove' : 'Keep'}</span>`;
@@ -1541,7 +1541,7 @@ viewer.onModelDrag = (done, base) => {
 
 /** Type a matrix in. Row-major because that is how one is written down and printed. */
 async function matrixModal() {
-  for (;;) {
+  for (; ;) {
     const cur = rowMajor(viewer.cells.model);
     const txt = [0, 4, 8, 12].map(i => cur.slice(i, i + 4).map(v => v.toFixed(6).padStart(12)).join(' ')).join('\n');
     const ans = await modal('Apply a matrix',
@@ -1550,7 +1550,7 @@ async function matrixModal() {
       `<p class="hint mono">The points are not rewritten — this is the matrix they are drawn through.</p>`,
       [{ label: 'Cancel', value: 'no' }, { label: 'Copy matrix', value: 'copy' }, { label: 'Apply', value: 'yes', cls: 'primary' }]);
     const raw = ($('tm-txt') as HTMLTextAreaElement | null)?.value ?? '';
-    if (ans === 'copy') { try { await navigator.clipboard.writeText(txt); } catch {} continue; }
+    if (ans === 'copy') { try { await navigator.clipboard.writeText(txt); } catch { } continue; }
     if (ans !== 'yes') return;
     const v = raw.trim().split(/[\s,;]+/).filter(Boolean).map(Number);
     if (v.length !== 16 || v.some(x => !isFinite(x))) {
@@ -2161,7 +2161,7 @@ async function runTiled(op: string, args: Record<string, any> = {}, ref: Entity 
   const workers: Ana[] = [];
   if (tiles.length === 1) {
     anaAlive = true; anaError = null;
-    workers.push({ id: -1, once: anaOnce, post: (m, t = []) => anaWorker.postMessage(m, t), kill: () => {}, heap: 0 });
+    workers.push({ id: -1, once: anaOnce, post: (m, t = []) => anaWorker.postMessage(m, t), kill: () => { }, heap: 0 });
   } else {
     for (let i = 0; i < Math.min(pool, tiles.length); i++) workers.push(makeAna(i));
   }
@@ -2187,7 +2187,7 @@ async function runTiled(op: string, args: Record<string, any> = {}, ref: Entity 
             kind = r.kind;
             full = r.kind === 'mask' ? new Uint8Array(total)
               : r.kind === 'normals' ? new Int8Array(total * 3)
-              : new Float32Array(total);
+                : new Float32Array(total);
           }
           scatter(tiles[i], r.data, full, r.kind === 'normals' ? 3 : 1);
           // what the operation reports about itself: the noise filter's settings, the number
@@ -2476,19 +2476,19 @@ async function analysis(op: string, args: Record<string, any> = {}, note = '') {
 function viewpointList(): number[] {
   return viewer.stations.length ? viewer.stationPositions().flat() : [];
 }
-$('k-annorm').addEventListener('click', () => analysis('normals', { k: anaUi.k, orient: false }, 'normals computed').catch(() => {}));
+$('k-annorm').addEventListener('click', () => analysis('normals', { k: anaUi.k, orient: false }, 'normals computed').catch(() => { }));
 $('k-anorient').addEventListener('click', () => {
   const vps = viewpointList();
   analysis('normals', { k: anaUi.k, orient: true, viewpoints: vps },
-    vps.length ? `normals oriented toward ${vps.length / 3} stations` : 'normals computed and oriented').catch(() => {});
+    vps.length ? `normals oriented toward ${vps.length / 3} stations` : 'normals computed and oriented').catch(() => { });
 });
-$('k-aninvert').addEventListener('click', () => analysis('invert', {}, 'normals inverted').catch(() => {}));
+$('k-aninvert').addEventListener('click', () => analysis('invert', {}, 'normals inverted').catch(() => { }));
 $('k-anfeatgo').addEventListener('click', () => {
   const sel = $<HTMLSelectElement>('k-anfeat');
-  analysis('feature', { name: sel.value, k: anaUi.k, radius: anaUi.spacing }, sel.options[sel.selectedIndex].text).catch(() => {});
+  analysis('feature', { name: sel.value, k: anaUi.k, radius: anaUi.spacing }, sel.options[sel.selectedIndex].text).catch(() => { });
 });
 $('k-ancc').addEventListener('click', () =>
-  analysis('components', { radius: anaUi.spacing, minPts: 16 }, 'Connected components').catch(() => {}));
+  analysis('components', { radius: anaUi.spacing, minPts: 16 }, 'Connected components').catch(() => { }));
 
 async function maskTool(op: string, args: Record<string, any>, label: string, prompt: string) {
   const note = (t: string, kind = '') => {
@@ -2545,7 +2545,7 @@ $('k-sfapply').addEventListener('click', async () => {
 interface Raster { grid: Float32Array; w: number; h: number; cell: number; ox: number; oy: number; lo: number; hi: number; axis: number; filled: number; sampled: number }
 const rasterUi = { cell: 0.25, interval: 0.5 };
 for (const [id, key, lab, f] of [['k-rcell', 'cell', 'v-rcell', (v: number) => `${v.toFixed(2)} m`],
-                                 ['k-cint', 'interval', 'v-cint', (v: number) => `${v.toFixed(2)} m`]] as [string, 'cell' | 'interval', string, (v: number) => string][]) {
+['k-cint', 'interval', 'v-cint', (v: number) => `${v.toFixed(2)} m`]] as [string, 'cell' | 'interval', string, (v: number) => string][]) {
   $(id).addEventListener('input', e => { rasterUi[key] = Number((e.target as HTMLInputElement).value); $(lab).textContent = f(rasterUi[key]); });
   $(lab).textContent = f(rasterUi[key]);
 }
@@ -2666,8 +2666,8 @@ function rasterPng(r: Raster): { png: Blob; pgw: string } {
   // a world file is six lines: x and y pixel size, two rotations, and the centre of the
   // top-left pixel — in the global frame, because that is the only frame a GIS knows
   const pgw = [r.cell, 0, 0, -r.cell,
-    r.ox + t[uAx] + r.cell / 2,
-    r.oy + t[vAx] + (r.h - 0.5) * r.cell].map(v => v.toFixed(6)).join('\n') + '\n';
+  r.ox + t[uAx] + r.cell / 2,
+  r.oy + t[vAx] + (r.h - 0.5) * r.cell].map(v => v.toFixed(6)).join('\n') + '\n';
   const bin = atob(cv.toDataURL('image/png').split(',')[1]);
   const buf = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
@@ -2844,8 +2844,10 @@ function measureVolume(opts: { cell?: number; reference?: string | null; plane?:
     diff[k] = d; cells++;
     if (d > 0) fill += d * area; else cut += -d * area;
   }
-  const res = { added: fill, removed: cut, net: fill - cut, cells, area: cells * area, cell,
-                reference: ref ? layerName(ref) : `a plane at z = ${plane}` };
+  const res = {
+    added: fill, removed: cut, net: fill - cut, cells, area: cells * area, cell,
+    reference: ref ? layerName(ref) : `a plane at z = ${plane}`
+  };
   let dlo = 0, dhi = 0;
   for (const d of diff) if (isFinite(d)) { if (d < dlo) dlo = d; if (d > dhi) dhi = d; }
   raster = { ...a, grid: diff, lo: dlo, hi: dhi, filled: cells };
@@ -2873,7 +2875,7 @@ $('k-volume').addEventListener('click', () => measureVolume());
 
 const fitUi = { tol: 0.02, minPts: 2000 };
 for (const [id, key, lab, f] of [['k-dettol', 'tol', 'v-dettol', (v: number) => `${v.toFixed(3)} m`],
-                                 ['k-detmin', 'minPts', 'v-detmin', (v: number) => fmt(v)]] as [string, 'tol' | 'minPts', string, (v: number) => string][]) {
+['k-detmin', 'minPts', 'v-detmin', (v: number) => fmt(v)]] as [string, 'tol' | 'minPts', string, (v: number) => string][]) {
   $(id).addEventListener('input', e => { fitUi[key] = Number((e.target as HTMLInputElement).value); $(lab).textContent = f(fitUi[key]); });
   $(lab).textContent = f(fitUi[key]);
 }
@@ -2932,8 +2934,8 @@ async function fitShape(kind: 'plane' | 'sphere' | 'cylinder' | 'circle') {
     $('v-fit').textContent = kind === 'plane'
       ? `plane · normal ${v3(r.normal)} · through ${v3(r.centroid)} · RMS ${mm(r.rms)} · worst ${mm(r.worst)} · ${fmt(r.points)} points`
       : kind === 'sphere' ? `sphere · centre ${v3(r.centre)} · r ${r.radius.toFixed(4)} m · RMS ${mm(r.rms)} · ${fmt(r.points)} points`
-      : kind === 'cylinder' ? `cylinder · axis ${v3(r.axis)} · through ${v3(r.centre)} · r ${r.radius.toFixed(4)} m · ${r.length.toFixed(3)} m long · RMS ${mm(r.rms)} · ${fmt(r.points)} points`
-      : `circle · centre ${v3(r.centre)} · r ${r.radius.toFixed(4)} m · normal ${v3(r.normal)} · RMS ${mm(r.rms)} · ${fmt(r.points)} points`;
+        : kind === 'cylinder' ? `cylinder · axis ${v3(r.axis)} · through ${v3(r.centre)} · r ${r.radius.toFixed(4)} m · ${r.length.toFixed(3)} m long · RMS ${mm(r.rms)} · ${fmt(r.points)} points`
+          : `circle · centre ${v3(r.centre)} · r ${r.radius.toFixed(4)} m · normal ${v3(r.normal)} · RMS ${mm(r.rms)} · ${fmt(r.points)} points`;
     viewer.touch();
     return r;
   } catch (e: any) { $('v-fit').textContent = 'fit failed: ' + (e?.message ?? e); return null; }
@@ -2994,7 +2996,7 @@ function renderShapeList() {
     const li = document.createElement('li');
     const what = sh.shape === 'plane' ? `normal ${sh.normal.map((v: number) => v.toFixed(2)).join(', ')}`
       : sh.shape === 'sphere' ? `r ${sh.radius.toFixed(3)} m`
-      : `r ${sh.radius.toFixed(3)} m, axis ${sh.axis.map((v: number) => v.toFixed(2)).join(', ')}`;
+        : `r ${sh.radius.toFixed(3)} m, axis ${sh.axis.map((v: number) => v.toFixed(2)).join(', ')}`;
     li.innerHTML = `<span class="ok">${i}: ${sh.shape}</span> <span class="mono">${what} · ${fmt(sh.points)} pts · RMS ${(sh.rms * 1000).toFixed(1)} mm</span>`;
     li.querySelector('.ok')!.addEventListener('click', () => {
       // narrow the field's value filter to this one shape, which is what "highlight" means
@@ -3299,8 +3301,10 @@ async function importMesh(f: File): Promise<Entity | null> {
     currentFile = f; currentHandle = null; cacheKey = ''; fromCache = false; cropped = false;
     histogram = new Uint32Array(256); axisCube = null;
     meta = {
-      scans: [{ name: f.name, points: 0, translation: frameOrigin.slice(), cartesian: true,
-                hasColor: raw.col.length === nv * 3, hasIntensity: false, hasNormals: hadNormals, bounds: null }],
+      scans: [{
+        name: f.name, points: 0, translation: frameOrigin.slice(), cartesian: true,
+        hasColor: raw.col.length === nv * 3, hasIntensity: false, hasNormals: hadNormals, bounds: null
+      }],
       stations: [],
     };
     viewer.setMesh(data, new THREE.Matrix4());
@@ -3329,7 +3333,7 @@ async function pickMeshFile() {
     try {
       const [h] = await anyWin.showOpenFilePicker({ types: [{ description: 'Mesh', accept: { 'application/octet-stream': accept } }] });
       await importMesh(await h.getFile()).catch((e: any) => fail('Could not read that mesh: ' + (e?.message ?? e)));
-    } catch {}
+    } catch { }
     return;
   }
   const inp = document.createElement('input'); inp.type = 'file'; if (!isIOS) inp.accept = accept.join(',');
@@ -3712,9 +3716,9 @@ let pendingView: any = null;
 $('k-viewlink').addEventListener('click', async () => {
   const v = viewer.getView(); const state = { p: v.p.map(n => +n.toFixed(3)), t: v.t.map(n => +n.toFixed(3)), c: knobs.colorMode, e: knobs.edl ? 1 : 0 };
   const u = new URL(location.href); u.hash = btoa(JSON.stringify(state));
-  try { await navigator.clipboard.writeText(u.toString()); $('v-cache').textContent = 'view link copied'; } catch {}
+  try { await navigator.clipboard.writeText(u.toString()); $('v-cache').textContent = 'view link copied'; } catch { }
 });
-function applyPendingView() { if (!pendingView) return; try { viewer.setView(pendingView); if (pendingView.c !== undefined) setColorMode(Number(pendingView.c)); } catch {} pendingView = null; }
+function applyPendingView() { if (!pendingView) return; try { viewer.setView(pendingView); if (pendingView.c !== undefined) setColorMode(Number(pendingView.c)); } catch { } pendingView = null; }
 function applyUrlCommands() {
   const q = new URLSearchParams(location.search);
   const view = q.get('view');
@@ -3723,7 +3727,7 @@ function applyUrlCommands() {
   const az = q.get('az'), el = q.get('el');
   if (az != null && el != null && isFinite(+az) && isFinite(+el)) viewer.setOrbit(+az, +el, q.get('dist') ? +q.get('dist')! : undefined);
 }
-try { if (location.hash.length > 2) pendingView = JSON.parse(atob(location.hash.slice(1))); } catch {}
+try { if (location.hash.length > 2) pendingView = JSON.parse(atob(location.hash.slice(1))); } catch { }
 
 // ------------------------------------------------------------------ agent: 3D modelling aids
 // What an agent needs to model from a scan is not more screenshots. It needs a *calibrated*
@@ -4043,7 +4047,7 @@ function contourCmd(a: any) {
   const segs: number[][] = [];
   for (let v = 0; v < h - 1; v++) for (let u = 0; u < w - 1; u++) {
     const code = (occ[v * w + u] ? 1 : 0) | (occ[v * w + u + 1] ? 2 : 0)
-               | (occ[(v + 1) * w + u + 1] ? 4 : 0) | (occ[(v + 1) * w + u] ? 8 : 0);
+      | (occ[(v + 1) * w + u + 1] ? 4 : 0) | (occ[(v + 1) * w + u] ? 8 : 0);
     if (code === 0 || code === 15) continue;
     const ab = [u + 0.5, v], bc = [u + 1, v + 0.5], cd = [u + 0.5, v + 1], da = [u, v + 0.5];
     const push = (p: number[], q: number[]) => segs.push([p[0], p[1], q[0], q[1]]);
@@ -4186,7 +4190,7 @@ function fitPlaneCmd(a: any) {
 async function pickFile() {
   const anyWin = window as any;
   if (anyWin.showOpenFilePicker) {
-    try { const [h] = await anyWin.showOpenFilePicker({ types: [{ description: 'Point cloud', accept: { 'application/octet-stream': ['.e57', '.ply', '.las', '.laz', '.ptx', '.obj', '.stl', ...ASCII_EXT.map(e => '.' + e)] } }] }); openFile(await h.getFile(), h); } catch {}
+    try { const [h] = await anyWin.showOpenFilePicker({ types: [{ description: 'Point cloud', accept: { 'application/octet-stream': ['.e57', '.ply', '.las', '.laz', '.ptx', '.obj', '.stl', ...ASCII_EXT.map(e => '.' + e)] } }] }); openFile(await h.getFile(), h); } catch { }
     return;
   }
   const inp = document.createElement('input'); inp.type = 'file'; if (!isIOS) inp.accept = ['.e57', '.ply', '.las', '.laz', '.ptx', '.obj', '.stl', ...ASCII_EXT.map(e => '.' + e)].join(',');
@@ -4195,9 +4199,71 @@ async function pickFile() {
 
 /** Open another scan: the same picker the start screen uses, behind the unsaved-work guard. */
 async function openAnother() { if (await confirmReplace()) await pickFile(); }
+
+/** Close the current scan(s) and return to the initial drop screen, behind the unsaved-work guard. */
+async function closeScan() {
+  if (!(await confirmReplace())) return;
+  worker?.terminate();
+  worker = null;
+  revealed = false;
+  gotRealLeaf = false;
+  fromCache = false;
+  cropped = false;
+  cacheNote = '';
+  currentFile = null;
+  currentHandle = null;
+  meta = null;
+  meshData = null;
+  meshFile = '';
+  meshInfo = null;
+  sfName = '';
+  sfStats = null;
+  for (const e of viewer.entities.slice()) if (e.id !== viewer.activeId) viewer.removeEntity(e.id);
+  viewer.active.name = 'Scan 1';
+  viewer.clear();
+  viewer.active.state = blankState();
+  histogram = new Uint32Array(256);
+  axisHist = [new Uint32Array(NB), new Uint32Array(NB), new Uint32Array(NB)];
+  axisCube = null;
+  sections.length = 0;
+  deletes.length = 0;
+  cropUI.on = false;
+  cropState.role = 'keep';
+  syncCropRoleUI();
+  prismFull.clear();
+  countCache.clear();
+  viewer.setMesh(null);
+  viewer.setModel(new THREE.Matrix4());
+  viewer.setModelGizmo(false);
+  void hist.clear();
+  clearDirty(true);
+  (document.activeElement as HTMLElement | null)?.blur?.();
+  document.body.classList.remove('has-mesh', 'has-sf', 'sf-filtering', 'has-prism', 'has-region', 'has-raster', 'has-contours', 'has-shapes');
+  ($('k-color-sf') as HTMLOptionElement).disabled = true;
+  $<HTMLInputElement>('k-cropon').checked = false;
+  syncRegions();
+  updateMeasureList();
+  setTool('none');
+  renderSectionList();
+  updateHistUI();
+  renderLayers();
+  updateNames();
+  updateCacheUI();
+  updateTransformUI();
+  $('topbar').classList.add('hidden');
+  $('panel').classList.add('hidden');
+  $('loading').classList.add('hidden');
+  $('loading').classList.remove('over');
+  $('err').classList.add('hidden');
+  $('drop').classList.remove('hidden');
+  viewer.resize();
+  viewer.touch();
+}
 $('pick').addEventListener('click', pickFile); $('pick2').addEventListener('click', pickFile);
 $('tb-open').addEventListener('click', () => openAnother());
 $('k-open').addEventListener('click', () => openAnother());
+$('tb-close')?.addEventListener('click', () => closeScan());
+$('k-close')?.addEventListener('click', () => closeScan());
 const testInput = document.createElement('input');
 testInput.type = 'file'; testInput.id = 'file-input'; testInput.style.cssText = 'position:fixed;opacity:0;pointer-events:none;left:-9999px';
 testInput.onchange = async () => {
@@ -4244,10 +4310,12 @@ const panelEl = $('panel');
 const isSheet = () => getComputedStyle(panelEl).borderTopLeftRadius !== '0px' && isTouch;
 function toggleSheet(force?: boolean) { const peek = force !== undefined ? !force : !panelEl.classList.contains('peek'); panelEl.classList.toggle('peek', peek); viewer.resize(); viewer.touch(); }
 $('grabber').addEventListener('click', () => toggleSheet());
-{ let y0 = 0, moved = false; const g = $('grabber');
+{
+  let y0 = 0, moved = false; const g = $('grabber');
   g.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; moved = false; }, { passive: true });
   g.addEventListener('touchmove', e => { if (Math.abs(e.touches[0].clientY - y0) > 24) moved = true; }, { passive: true });
-  g.addEventListener('touchend', e => { if (!moved) return; toggleSheet((e.changedTouches[0].clientY - y0) < 0); }); }
+  g.addEventListener('touchend', e => { if (!moved) return; toggleSheet((e.changedTouches[0].clientY - y0) < 0); });
+}
 addEventListener('orientationchange', () => setTimeout(() => { viewer.resize(); viewer.fit(); }, 260));
 document.querySelectorAll<HTMLElement>('#panel .grp').forEach((g, i) => {
   const h = g.querySelector('h3'); if (!h) return;
@@ -4266,11 +4334,12 @@ push();
 updateTransformUI();
 renderLayers(); updateNames();
 refreshCachedList();
-(function loop() { viewer.render(); requestAnimationFrame(loop); })();
 (window as any).__viewer = viewer;
-(window as any).__app = { openFile, openCached, writeCache, applyKeep, applyCrop, setCropRole, get cropState() { return cropState; }, addSection, undoEdit, redoEdit, saveCurrent, hist,
+(function loop() { requestAnimationFrame(loop); viewer.render(); })();
+(window as any).__app = {
+  openFile, openCached, writeCache, applyKeep, applyCrop, setCropRole, get cropState() { return cropState; }, addSection, undoEdit, redoEdit, saveCurrent, hist,
   commitTransform, transformState, levelCloud, rowMajor, fromRowMajor, runExport, updateTransformUI,
-  dirtyList, isDirty, openAnother, confirmReplace,
+  dirtyList, isDirty, openAnother, confirmReplace, closeScan,
   stateRecord, recommendedSource, surfaceRecord, heightmapCmd, contourCmd, fitPlaneCmd,
   createPrismRegion, placeRegion, scaleRegion, fitToContents, activeRegion, startSize, buildClassificationField,
   fitShape, detectShapes, fitPoints, applyShapeMask, get shapes() { return shapes; },
@@ -4289,4 +4358,5 @@ refreshCachedList();
   importMesh, measureActiveMesh, smoothActiveMesh, decimateActiveMesh, sampleMeshPoints, distanceToMesh,
   replaceMesh, flipMesh, meshEntities, meshBlob, saveMesh, refreshMeshUI, setDisplay,
   modelF32, get lastFit() { return lastFit; }, defaultVoxelCm, pagedHit, image, get lastRender() { return lastRender; }, runView, runSection,
-  get meshFile() { return meshFile; }, get meshInfo() { return meshInfo; } };
+  get meshFile() { return meshFile; }, get meshInfo() { return meshInfo; }
+};

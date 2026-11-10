@@ -384,6 +384,7 @@ export class Viewer {
     const w = p && p !== document.body ? p.clientWidth : innerWidth;
     const h = p && p !== document.body ? p.clientHeight : innerHeight;
     if (w > 0 && h > 0) this.resizeTo(w, h);
+    else if (!this.rt) this.resizeTo(Math.max(1, innerWidth), Math.max(1, innerHeight));
   }
   private resizeTo(w: number, h: number) {
     this.cw = w; this.ch = h;
