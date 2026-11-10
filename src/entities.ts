@@ -76,7 +76,7 @@ export class Entity {
   /** True for a layer that is a mesh rather than a cloud: no points, triangles instead. */
   get isMesh() { return this.cells.total === 0 && this.mesh.hasMesh; }
   /** Anything to draw at all. */
-  get hasContent() { return this.cells.total > 0 || this.mesh.hasMesh; }
+  get hasContent() { return this.cells.renderedTotal > 0 || this.mesh.hasMesh; }
   get points() { return this.cells.total; }
   /** The box a tool should work in: the percentile box when there is one, else the cells'. */
   bounds(): THREE.Box3 {

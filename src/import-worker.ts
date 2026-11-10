@@ -17,9 +17,36 @@ self.onmessage = async (ev: MessageEvent) => {
     if (!ready) ready = init({ module_or_path: wasmUrl });
     await ready;
     const file: File = m.file;
+    const remoteUrl: string | undefined = m.remoteUrl;
+    const fileSize: number = m.remoteSize ?? file.size;
+    let bytesPulled = 0;
     const fr = new FileReaderSync();
-    const readRange = (offset: number, length: number) =>
-      new Uint8Array(fr.readAsArrayBuffer(file.slice(offset, Math.min(offset + length, file.size))));
+    const readRange = (offset: number, length: number) => {
+      const end = Math.min(offset + length, fileSize);
+      if (end <= offset) return new Uint8Array(0);
+      if (remoteUrl) {
+        if (offset === 0 && end <= file.size) {
+          const buf = fr.readAsArrayBuffer(file.slice(offset, end));
+          bytesPulled += buf.byteLength;
+          return new Uint8Array(buf);
+        }
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', remoteUrl, false);
+        xhr.responseType = 'arraybuffer';
+        xhr.withCredentials = true;
+        xhr.setRequestHeader('Range', `bytes=${offset}-${end - 1}`);
+        xhr.send();
+        if (xhr.status !== 200 && xhr.status !== 206) {
+          throw new Error(`Range request failed (${xhr.status})`);
+        }
+        const buf = xhr.response as ArrayBuffer;
+        bytesPulled += buf.byteLength;
+        return new Uint8Array(buf);
+      }
+      const buf = fr.readAsArrayBuffer(file.slice(offset, end));
+      bytesPulled += buf.byteLength;
+      return new Uint8Array(buf);
+    };
     const kind = m.kind ?? sniff(file.name, readRange);
     if (!['ply', 'las', 'laz', 'ascii', 'ptx'].includes(kind)) throw new Error(`Unrecognised file type: ${file.name}`);
 
@@ -28,8 +55,23 @@ self.onmessage = async (ev: MessageEvent) => {
     const t0 = performance.now();
     let sink: PointSink | null = null;
     let total = 0, lastProgress = 0;
-    const preview = (rec: Uint8Array, count: number, pm: Float64Array) =>
-      post({ type: 'preview', block: rec.buffer, count, meta: { origin: [pm[0], pm[1], pm[2]], size: pm[3], bmin: [pm[0], pm[1], pm[2]], bmax: [pm[0] + pm[3], pm[1] + pm[3], pm[2] + pm[3]] } }, [rec.buffer]);
+    let previewBatches = 0;
+    let targetPerLaterBatch = 50_000;
+    const preview = (rec: Uint8Array, count: number, pm: Float64Array) => {
+      const cubeMeta = { origin: [pm[0], pm[1], pm[2]], size: pm[3], bmin: [pm[0], pm[1], pm[2]], bmax: [pm[0] + pm[3], pm[1] + pm[3], pm[2] + pm[3]] };
+      previewBatches++;
+      if (previewBatches <= 2 || count <= targetPerLaterBatch) {
+        post({ type: 'preview', block: rec.buffer, count, meta: cubeMeta }, [rec.buffer]);
+        return;
+      }
+      const subStride = Math.max(1, Math.floor(count / targetPerLaterBatch));
+      const kept = Math.ceil(count / subStride);
+      const out = new Uint8Array(kept * 14);
+      for (let i = 0, j = 0; i < count; i += subStride, j++) {
+        out.set(rec.subarray(i * 14, i * 14 + 14), j * 14);
+      }
+      post({ type: 'preview', block: out.buffer, count: kept, meta: cubeMeta }, [out.buffer]);
+    };
 
     const onMeta = (im: any) => {
       total = im.points;
@@ -51,10 +93,14 @@ self.onmessage = async (ev: MessageEvent) => {
                   hasColor: im.hasColor, hasIntensity: im.hasIntensity, hasNormals: im.hasNormals, hasClassification: !!im.hasClassification,
                   cartesian: true, spherical: false, fields: 0 }],
       };
-      post({ type: 'meta', meta, openMs: performance.now() - t0, bytesPulled: 0 });
-      post({ type: 'plan', stride, willKeep: Math.floor(im.points / stride), autoAdjusted });
+      const willKeep = Math.max(1, Math.floor(im.points / stride));
+      post({ type: 'meta', meta, openMs: performance.now() - t0, bytesPulled });
+      post({ type: 'plan', stride, willKeep, autoAdjusted });
       const b = im.bounds;
-      sink = new PointSink(new Float64Array([b[0], b[2], b[4], b[1], b[3], b[5]]), im.points / stride, memLimit, 1_200_000);
+      const wasmPreviewTarget = Math.max(2_400_000, Math.ceil(willKeep / 4));
+      const expectedBatches = Math.max(1, Math.ceil(wasmPreviewTarget / 200_000));
+      targetPerLaterBatch = Math.max(10_000, Math.min(200_000, Math.ceil(2_000_000 / expectedBatches)));
+      sink = new PointSink(new Float64Array([b[0], b[2], b[4], b[1], b[3], b[5]]), willKeep, memLimit, wasmPreviewTarget);
     };
     const onBatch = (bt: any) => {
       if (!sink) return;
@@ -75,32 +121,32 @@ self.onmessage = async (ev: MessageEvent) => {
     };
     const onProgress = (read: number, count: number) => {
       const now = performance.now();
-      if (now - lastProgress > 80) { lastProgress = now; post({ type: 'progress', phase: 0, done: read, total: count, elapsed: now - t0, bytesPulled: 0 }); }
+      if (now - lastProgress > 80) { lastProgress = now; post({ type: 'progress', phase: 0, done: read, total: count, elapsed: now - t0, bytesPulled, fileSize }); }
     };
-    if (kind === 'ply') parsePly(readRange, file.size, file.name, onMeta, onBatch, onProgress);
-    else if (kind === 'ptx') parsePtx(readRange, file.size, file.name, onMeta, onBatch, onProgress);
-    else if (kind === 'ascii') parseAscii(readRange, file.size, file.name, m.map, m.delim, m.skip ?? 0, onMeta, onBatch, onProgress);
+    if (kind === 'ply') parsePly(readRange, fileSize, file.name, onMeta, onBatch, onProgress);
+    else if (kind === 'ptx') parsePtx(readRange, fileSize, file.name, onMeta, onBatch, onProgress);
+    else if (kind === 'ascii') parseAscii(readRange, fileSize, file.name, m.map, m.delim, m.skip ?? 0, onMeta, onBatch, onProgress);
     else {
       // The laszip decompressor reads through the same ranged shim, a chunk at a time, so a
       // multi-gigabyte LAZ never enters wasm memory whole.
       let laz: LazReader | null = null;
       const makeLaz = (vlr: Uint8Array, offset: number, recLen: number) => {
-        laz = new LazReader(readRange as any, file.size, vlr, offset, recLen);
+        laz = new LazReader(readRange as any, fileSize, vlr, offset, recLen);
         return { read: (n: number) => laz!.read(n) };
       };
-      try { parseLas(readRange, file.size, file.name, onMeta, onBatch, onProgress, { makeLaz }); }
+      try { parseLas(readRange, fileSize, file.name, onMeta, onBatch, onProgress, { makeLaz }); }
       finally { try { (laz as LazReader | null)?.free(); } catch {} }
     }
     if (!sink) throw new Error('nothing to import');
 
     const s = sink as PointSink;
     const stats: any = s.finish(preview,
-      (phase: number, done: number, tot: number) => { post({ type: 'progress', phase, done, total: tot, elapsed: performance.now() - t0, bytesPulled: 0 }); return false; },
+      (phase: number, done: number, tot: number) => { post({ type: 'progress', phase, done, total: tot, elapsed: performance.now() - t0, bytesPulled, fileSize }); return false; },
       (blocks: Uint8Array[], count: number, pm: Float64Array) => {
         const bufs = blocks.map(b => b.buffer as ArrayBuffer);
         post({ type: 'leaf', blocks: bufs, count, meta: { origin: [pm[0], pm[1], pm[2]], size: pm[3], bmin: [pm[4], pm[5], pm[6]], bmax: [pm[7], pm[8], pm[9]] } }, bufs);
       });
-    post({ type: 'done', ms: performance.now() - t0, bytesPulled: file.size, stats: { read: total, kept: stats.kept, droppedInvalid: 0, leaves: stats.leaves, nodes: stats.leaves } });
+    post({ type: 'done', ms: performance.now() - t0, bytesPulled: fileSize, stats: { read: total, kept: stats.kept, droppedInvalid: 0, leaves: stats.leaves, nodes: stats.leaves } });
   } catch (e: any) {
     post({ type: 'error', message: String(e?.message ?? e) });
   }

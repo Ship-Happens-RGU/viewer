@@ -450,6 +450,8 @@ export class CellRenderer {
   private u: Record<string, WebGLUniformLocation | null> = {};
   leaves: Leaf[] = [];
   total = 0;
+  previewTotal = 0;
+  get renderedTotal() { return this.total || this.previewTotal; }
   private frustum = new THREE.Frustum();
   private vp = new THREE.Matrix4();
   private pending: { blocks: ArrayBuffer[]; count: number; meta: LeafMeta; preview: boolean; capacity?: number; tag?: number }[] = [];
@@ -502,14 +504,15 @@ export class CellRenderer {
   get pendingCount() { return this.pending.length; }
 
   /** Upload up to `maxBytes` of queued leaves. Returns true if anything changed. */
-  flushUploads(maxBytes = 48 * 1024 * 1024): boolean {
+  flushUploads(maxBytes = 96 * 1024 * 1024): boolean {
     let done = 0, changed = false;
     while (this.pending.length && done < maxBytes) {
       const p = this.pending.shift()!;
       const leaf = new Leaf(this.gl, p.blocks, p.count, p.meta, p.preview, p.capacity);
       leaf.tag = p.tag ?? -1;
       this.leaves.push(leaf);
-      if (!p.preview) this.total += p.capacity ?? p.count;
+      if (p.preview) this.previewTotal += p.count;
+      else this.total += p.capacity ?? p.count;
       this.bounds.union(this.leafBox(leaf));
       done += p.count * REC; changed = true;
     }
@@ -525,12 +528,13 @@ export class CellRenderer {
     const keep: Leaf[] = [];
     for (const l of this.leaves) { if (l.preview) l.dispose(this.gl); else keep.push(l); }
     this.leaves = keep;
+    this.previewTotal = 0;
     this.recomputeBounds();
   }
 
   clear() {
     for (const l of this.leaves) l.dispose(this.gl);
-    this.leaves = []; this.pending = []; this.total = 0; this.bounds.makeEmpty();
+    this.leaves = []; this.pending = []; this.total = 0; this.previewTotal = 0; this.bounds.makeEmpty();
   }
 
   /** Replace the cloud's transform. Instant: only the derived bounds are recomputed. */
@@ -1047,7 +1051,7 @@ export class CellRenderer {
   /** Cull, budget, draw. Assumes the target framebuffer and viewport are already bound. */
   draw(camera: THREE.PerspectiveCamera, p: DrawParams): DrawStats {
     const gl = this.gl;
-    const stats: DrawStats = { leavesVisible: 0, leavesDrawn: 0, pointsDrawn: 0, pointsTotal: this.total };
+    const stats: DrawStats = { leavesVisible: 0, leavesDrawn: 0, pointsDrawn: 0, pointsTotal: this.renderedTotal };
     if (!this.leaves.length) return stats;
 
     this.vp.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);

@@ -331,7 +331,7 @@ export class Viewer {
   get robust(): THREE.Box3 | null { return this.active.robust; }
   set robust(b: THREE.Box3 | null) { this.active.robust = b; }
   get gl(): WebGL2RenderingContext { return this.renderer.getContext() as WebGL2RenderingContext; }
-  get visibleEntities(): Entity[] { return this.entities.filter(e => e.visible && e.cells.total > 0); }
+  get visibleEntities(): Entity[] { return this.entities.filter(e => e.visible && e.cells.renderedTotal > 0); }
   /** Visible layers that have anything at all, a mesh-only layer included. */
   get shownEntities(): Entity[] { return this.entities.filter(e => e.visible && e.hasContent); }
   addEntity(name: string, id?: string): Entity {
@@ -365,7 +365,7 @@ export class Viewer {
   visibleBounds(): THREE.Box3 {
     const b = new THREE.Box3();
     for (const e of this.shownEntities) {
-      if (e.cells.total > 0) b.union(e.bounds());
+      if (e.cells.renderedTotal > 0) b.union(e.bounds());
       // a mesh layer's box is its triangles', through the transform they are drawn with
       if (e.mesh.hasMesh) b.union(e.mesh.bounds.clone().applyMatrix4(e.mesh.model));
     }
@@ -1360,7 +1360,7 @@ export class Viewer {
       // up in front — no per-entity pass, no sorting. The frame budget is shared out by point
       // count, so adding a second cloud thins both rather than starving one.
       const vis = this.visibleEntities;
-      const all = Math.max(1, vis.reduce((n, e) => n + e.cells.total, 0));
+      const all = Math.max(1, vis.reduce((n, e) => n + e.cells.renderedTotal, 0));
       const params = {
         budget, density: k.density, ptSize: k.size, sizeMode: k.sizeMode, minPx: 1, maxPx: k.maxPx,
         colorMode: k.colorMode, zMin: this.zRange[0], zMax: this.zRange[1], iMin: k.iMin, iMax: k.iMax,
@@ -1371,11 +1371,11 @@ export class Viewer {
       };
       this.stats = { leavesVisible: 0, leavesDrawn: 0, pointsDrawn: 0, pointsTotal: 0 };
       for (const e of vis) {
-        const s = e.cells.draw(this.camera, { ...params, budget: Math.max(50_000, Math.round(budget * e.cells.total / all)), tint: e.tintRgb() });
+        const s = e.cells.draw(this.camera, { ...params, budget: Math.max(50_000, Math.round(budget * e.cells.renderedTotal / all)), tint: e.tintRgb() });
         this.stats.leavesVisible += s.leavesVisible; this.stats.leavesDrawn += s.leavesDrawn;
         this.stats.pointsDrawn += s.pointsDrawn; this.stats.pointsTotal += s.pointsTotal;
       }
-      if (!vis.length) this.stats.pointsTotal = this.cells.total;
+      if (!vis.length) this.stats.pointsTotal = this.cells.renderedTotal;
     }
     this.renderer.resetState();
 

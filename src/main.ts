@@ -27,6 +27,8 @@ const NB = 1024;
 let axisHist = [new Uint32Array(NB), new Uint32Array(NB), new Uint32Array(NB)];
 let axisCube: { origin: number[]; size: number } | null = null;
 let revealed = false, gotRealLeaf = false, fromCache = false, cropped = false;
+let previewPoints = 0, previewBatches = 0, userMovedDuringLoad = false;
+let activeLoadProgressCb: ((fraction: number) => void) | null = null;
 let cacheKey = '';
 /** Set when layers have been merged, because that is an unsaved change with no undo step. */
 let mergedNote = '';
@@ -71,7 +73,11 @@ function restoreActive() {
 
 // ------------------------------------------------------------------ helpers
 function hashKey(s: string) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0') + s.length.toString(16); }
-function keyFor(f: File, stride: number) { return hashKey(`${f.name}|${f.size}|${f.lastModified}|${stride}`); }
+function keyFor(f: File, stride: number, handle?: any) {
+  const sz = handle?.remoteSize ?? f.size;
+  const id = handle?.scanId ?? '';
+  return hashKey(`${id}|${f.name}|${sz}|${f.lastModified}|${stride}`);
+}
 const ioWaiters = new Map<string, (m: any) => void>();
 function ioOnce(type: string): Promise<any> { return new Promise(res => ioWaiters.set(type, res)); }
 let undoTail: Promise<unknown> = Promise.resolve();
@@ -157,7 +163,7 @@ function modal(title: string, bodyHtml: string, buttons: { label: string; cls?: 
 function busy(text: string, frac?: number) { $('busy').classList.remove('hidden'); $('busy-text').textContent = text; $('busy-bar').style.width = frac === undefined ? '0%' : `${Math.min(100, frac * 100).toFixed(0)}%`; }
 function hideBusy() { $('busy').classList.add('hidden'); }
 const tick = () => new Promise(r => setTimeout(r, 0));
-function fail(msg: string) { const e = $('err'); e.textContent = msg; e.classList.remove('hidden'); $('loading').classList.add('hidden'); if (!revealed) $('drop').classList.remove('hidden'); }
+function fail(msg: string) { activeLoadProgressCb?.(1); activeLoadProgressCb = null; const e = $('err'); e.textContent = msg; e.classList.remove('hidden'); $('loading').classList.add('hidden'); if (!revealed) $('drop').classList.remove('hidden'); }
 
 // ------------------------------------------------------------------ opening files
 function resetForLoad(name: string, keepOthers = false) {
@@ -169,6 +175,7 @@ function resetForLoad(name: string, keepOthers = false) {
     mergedNote = ''; frameOrigin = null;
   }
   revealed = viewer.loadedAll > 0 && keepOthers; gotRealLeaf = false; fromCache = false; cropped = false; cacheNote = ''; clearDirty(!keepOthers);
+  previewPoints = 0; previewBatches = 0; userMovedDuringLoad = false;
   (document.activeElement as HTMLElement | null)?.blur?.();
   $('drop').classList.add('hidden'); $('loading').classList.remove('hidden'); $('loading').classList.add('over');
   $('ld-name').textContent = name; $('ld-stat').textContent = 'opening…'; $('ld-bar').style.width = '0%'; $('err').classList.add('hidden');
@@ -185,8 +192,11 @@ function resetForLoad(name: string, keepOthers = false) {
   worker?.terminate(); worker = null;
   t0 = performance.now();
 }
+$('gl').addEventListener('pointerdown', () => { if (worker) userMovedDuringLoad = true; });
+$('gl').addEventListener('wheel', () => { if (worker) userMovedDuringLoad = true; }, { passive: true });
 async function openFile(f: File, handle: any = null, add = false) {
-  if (f.size < 48) { fail('That file is too small to be a scan.'); return; }
+  const effectiveSize = handle?.remoteSize ?? f.size;
+  if (effectiveSize < 48) { fail('That file is too small to be a scan.'); return; }
   // A file with faces in it is a mesh, and a mesh is a layer of its own kind. PLY is the one
   // format that can be either, so the decision is made on the header rather than the name.
   try {
@@ -218,14 +228,24 @@ async function openFile(f: File, handle: any = null, add = false) {
     viewer.activeId = e.id;
     restoreActive();
   }
-  currentFile = f; currentHandle = handle;
+  activeLoadProgressCb = typeof handle?.onProgress === 'function' ? handle.onProgress : null;
+  const cleanHandle = handle?.remoteUrl
+    ? { remoteUrl: handle.remoteUrl, remoteSize: handle.remoteSize, scanId: handle.scanId }
+    : handle;
+  currentFile = f; currentHandle = cleanHandle;
   pendingAdd = add;
   resetForLoad(f.name, add);
   const stride = Number(($('k-load') as HTMLSelectElement).value) || 1;
-  cacheKey = keyFor(f, stride);
+  cacheKey = keyFor(f, stride, cleanHandle);
   io.postMessage({ type: 'cache-has', key: cacheKey });
   const has = await ioOnce('cache-has');
-  if (has.has) { fromCache = true; $('ld-stat').textContent = 'loading from cache…'; io.postMessage({ type: 'cache-read', key: cacheKey }); return; }
+  if (has.has) {
+    fromCache = true;
+    $('ld-stat').textContent = 'loading from cache…';
+    activeLoadProgressCb?.(1);
+    io.postMessage({ type: 'cache-read', key: cacheKey });
+    return;
+  }
   // what kind of file this is, decided from its first bytes rather than its name
   let kind: string | null = null;
   try {
@@ -243,7 +263,17 @@ async function openFile(f: File, handle: any = null, add = false) {
     : new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = onWorker;
   worker.onerror = e => fail(`Decoder crashed: ${e.message || 'out of memory?'} — try a smaller "In memory" fraction.`);
-  worker.postMessage({ type: 'open', file: f, scanIndex: 0, stride, memLimit: MEM_LIMIT, kind, ...(ascii ?? {}) });
+  worker.postMessage({
+    type: 'open',
+    file: f,
+    remoteUrl: cleanHandle?.remoteUrl,
+    remoteSize: cleanHandle?.remoteSize,
+    scanIndex: 0,
+    stride,
+    memLimit: MEM_LIMIT,
+    kind,
+    ...(ascii ?? {}),
+  });
 }
 
 /** Plain text says nothing about itself, so the first twenty lines are shown with a guess at
@@ -299,24 +329,42 @@ function onWorker(ev: MessageEvent) {
     const u16 = new Uint16Array(m.block.byteLength >> 1); new Uint8Array(u16.buffer).set(u8.subarray(0, u16.length * 2));
     axisCube = { origin: m.meta.origin, size: m.meta.size };
     for (let i = 0; i < u8.length; i += REC) { histogram[u8[i + 9]]++; const b = i >> 1; axisHist[0][u16[b] >> 6]++; axisHist[1][u16[b + 1] >> 6]++; axisHist[2][u16[b + 2] >> 6]++; }
-    if (!gotRealLeaf) viewer.addLeaf([m.block], m.count, m.meta, true);
-    if (!revealed && viewer.loaded + m.count > 150_000) { robustBounds(); revealViewport(); }
+    if (!gotRealLeaf) {
+      viewer.addLeaf([m.block], m.count, m.meta, true);
+      previewPoints += m.count;
+      previewBatches++;
+    }
+    robustBounds();
     viewer.applyZRange();
+    syncZLabels();
+    if (!revealed) {
+      revealViewport();
+    } else if (previewBatches <= 3 && !userMovedDuringLoad) {
+      viewer.fit(true);
+    }
   }
   else if (m.type === 'progress') {
     const total = meta.scans[0].points;
     if (m.phase === 0) {
-      const pct = Math.min(100, (m.done / total) * 100); $('ld-bar').style.width = (pct * 0.85) + '%';
-      const rate = m.done / (m.elapsed / 1000), eta = Math.max(0, (total - m.done) / rate);
-      $('ld-stat').textContent = `decoding ${fmt(m.done)} · ${(rate / 1e6).toFixed(1)} M pts/s · ${pct.toFixed(0)}% · ~${eta.toFixed(0)}s left`; $('tb-points').textContent = `decoding ${pct.toFixed(0)}%`;
+      const pct = Math.min(100, (m.done / Math.max(total, 1)) * 100); $('ld-bar').style.width = (pct * 0.85) + '%';
+      activeLoadProgressCb?.(Math.min(0.85, (pct * 0.85) / 100));
+      const rate = m.done / Math.max(m.elapsed / 1000, 0.001), eta = Math.max(0, (total - m.done) / Math.max(rate, 1));
+      $('ld-stat').textContent = `decoding ${fmt(m.done)} · ${(rate / 1e6).toFixed(1)} M pts/s · ${pct.toFixed(0)}% · ~${eta.toFixed(0)}s left`;
+      $('tb-points').textContent = previewPoints > 0 ? `streaming ${fmt(previewPoints)} pts (${pct.toFixed(0)}%)` : `decoding ${pct.toFixed(0)}%`;
     } else {
       const pct = fromCache ? (m.done / Math.max(m.total, 1)) * 100 : 85 + (m.done / Math.max(m.total, 1)) * 15;
       $('ld-bar').style.width = pct + '%';
+      activeLoadProgressCb?.(Math.min(0.99, pct / 100));
       $('ld-stat').textContent = fromCache ? `reading cache ${mb(m.done)} / ${mb(m.total)}` : `building cells ${m.done} / ${m.total}`;
       $('tb-points').textContent = fromCache ? 'reading cache…' : 'building cells…';
     }
   }
-  else if (m.type === 'leaf') { if (!gotRealLeaf) { gotRealLeaf = true; viewer.dropPreview(); } viewer.addLeaf(m.blocks, m.count, m.meta, false); viewer.applyZRange(); if (!revealed) revealViewport(); }
+  else if (m.type === 'leaf') {
+    if (!gotRealLeaf) { gotRealLeaf = true; }
+    viewer.addLeaf(m.blocks, m.count, m.meta, false);
+    viewer.applyZRange();
+    if (!revealed) revealViewport();
+  }
   else if (m.type === 'done') onDone(m.stats, m.fromCache ? 'from cache' : 'loaded');
   else if (m.type === 'error') fail(m.message);
 }
@@ -353,9 +401,12 @@ function onMeta(m: any) {
   $('k-stations').parentElement!.classList.toggle('hidden', !meta.stations.length);
 }
 function onDone(stats: any, how: string) {
+  activeLoadProgressCb?.(1);
+  activeLoadProgressCb = null;
   if (!fromCache) robustBounds();
   retightenSoon();
   revealViewport(); viewer.applyZRange(); autoRangeIntensity(); syncZLabels();
+  afterUploads(() => { viewer.dropPreview(); });
   const secs = (performance.now() - t0) / 1000, total = meta.scans[0].points;
   $('tb-points').textContent = `${fmt(stats.kept)} pts · ${how} in ${secs.toFixed(1)}s`;
   $('v-loaded').textContent = `${fmt(stats.kept)} of ${fmt(total)} in memory (${((stats.kept / total) * 100).toFixed(0)}%) · ${stats.leaves} cells` + (stats.droppedInvalid ? ` · ${fmt(stats.droppedInvalid)} invalid skipped` : '');
@@ -364,7 +415,9 @@ function onDone(stats: any, how: string) {
     const n = buildClassificationField();
     if (n) $('v-analysis').textContent = `Classification read from the file · ${n} classes · colour by it with Colour → Scalar field`;
   });
-  drawHistogram(); viewer.fit(); applyPendingView(); applyUrlCommands(); updateCropUI(true);
+  drawHistogram();
+  if (!userMovedDuringLoad) viewer.fit();
+  applyPendingView(); applyUrlCommands(); updateCropUI(true);
   worker?.terminate(); worker = null;
   if (currentHandle) idbPut(cacheKey, currentHandle);
   updateCacheUI(); updateHistUI();
@@ -3651,7 +3704,7 @@ async function writeCache() {
   if (!currentFile || !meta) return;
   const stride = Number(($('k-load') as HTMLSelectElement).value) || 1; const r = robustLoHi();
   cacheBytesExpected = viewer.loaded * REC; busy('Caching…', 0);
-  io.postMessage({ type: 'cache-start', key: cacheKey, meta: { name: currentFile.name, size: currentFile.size, lastModified: currentFile.lastModified, stride, scanMeta: meta, kept: viewer.loaded, histogram: Array.from(histogram), robust: r ? { lo: r.lo, hi: r.hi } : null, model: rowMajor(viewer.cells.model) } });
+  io.postMessage({ type: 'cache-start', key: cacheKey, meta: { name: currentFile.name, size: currentHandle?.remoteSize ?? currentFile.size, lastModified: currentFile.lastModified, stride, scanMeta: meta, kept: viewer.loaded, histogram: Array.from(histogram), robust: r ? { lo: r.lo, hi: r.hi } : null, model: rowMajor(viewer.cells.model) } });
   await ioOnce('cache-ready');
   let n = 0;
   for (const { leaf, recs } of viewer.cells.records()) {
@@ -3703,6 +3756,10 @@ async function openCached(key: string) {
   const handle = await idbGet(key);
   if (!handle) throw new Error('no stored handle for that scan');
   if (item.stride) $<HTMLSelectElement>('k-load').value = String(item.stride);
+  if (handle.remoteUrl) {
+    await openFile(new File([new Uint8Array(64)], item.name, { lastModified: item.lastModified || 0 }), handle);
+    return;
+  }
   const perm = await handle.requestPermission?.({ mode: 'read' }); if (perm && perm !== 'granted') throw new Error('permission denied');
   await openFile(await handle.getFile(), handle);
 }
