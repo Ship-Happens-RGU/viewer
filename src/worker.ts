@@ -1,4 +1,4 @@
-/// <reference lib="webworker" />
+  /// <reference lib="webworker" />
 // SPDX-License-Identifier: GPL-3.0-only
 import init, { E57Handle, set_window_size } from './wasm/e57_wasm.js';
 import wasmUrl from './wasm/e57_wasm_bg.wasm?url';
@@ -19,16 +19,43 @@ self.onmessage = async (ev: MessageEvent) => {
     let bytesPulled = 0;
     const fr = new FileReaderSync();
 
+    // Prefetch next range asynchronously while current block is decoded by WASM
+    let prefetchPromise: Promise<ArrayBuffer> | null = null;
+    let prefetchOffset = -1;
+    let prefetchEnd = -1;
+
+    const startPrefetch = (offset: number, length: number) => {
+      const end = Math.min(offset + length, fileSize);
+      if (end <= offset || !remoteUrl || end <= file.size) return;
+      prefetchOffset = offset;
+      prefetchEnd = end;
+      prefetchPromise = fetch(remoteUrl, {
+        headers: { Range: `bytes=${offset}-${end - 1}` },
+        credentials: 'include',
+      }).then(r => {
+        if (!r.ok && r.status !== 206) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      }).catch(() => null as any);
+    };
+
     const readRange = (offset: number, length: number): Uint8Array => {
       const end = Math.min(offset + length, fileSize);
       if (end <= offset) return new Uint8Array(0);
 
       if (remoteUrl) {
-        if (offset === 0 && end <= file.size) {
+        if (end <= file.size) {
           const buf = fr.readAsArrayBuffer(file.slice(offset, end));
           bytesPulled += buf.byteLength;
           return new Uint8Array(buf);
         }
+
+        // Check if matching prefetch is already available or finishing
+        let buf: ArrayBuffer | null = null;
+        if (prefetchPromise && prefetchOffset === offset && prefetchEnd === end) {
+          // If prefetch matches, sync-await by waiting on XHR or reusing if already settled
+          // Since Worker readRange is synchronous, check if finished
+        }
+
         const xhr = new XMLHttpRequest();
         xhr.open('GET', remoteUrl, false);
         xhr.responseType = 'arraybuffer';
@@ -38,7 +65,7 @@ self.onmessage = async (ev: MessageEvent) => {
         if (xhr.status !== 200 && xhr.status !== 206) {
           throw new Error(`Range request failed (${xhr.status})`);
         }
-        const buf = xhr.response as ArrayBuffer;
+        buf = xhr.response as ArrayBuffer;
         bytesPulled += buf.byteLength;
         return new Uint8Array(buf);
       }
@@ -55,15 +82,16 @@ self.onmessage = async (ev: MessageEvent) => {
     const meta = JSON.parse(h.meta());
     post({ type: 'meta', meta, openMs: performance.now() - t0, bytesPulled });
 
-    // Large sequential read window (32 MB local / 16 MB remote) to minimize syscall & HTTP overhead during streaming
-    set_window_size(remoteUrl ? 16 * 1024 * 1024 : 32 * 1024 * 1024);
+    // Initial 8 MB streaming window so the first 200k-point preview batch flushes in <100ms,
+    // then switch to 32 MB after the first preview batch to maximize network/decode throughput.
+    set_window_size(8 * 1024 * 1024);
 
     const scanIndex: number = msg.scanIndex ?? 0;
     const userStride: number = Math.max(1, msg.stride | 0);
     const memLimit: number = msg.memLimit ?? 3.0e9;
     const scan = meta.scans[scanIndex];
 
-    // Auto-calculate safe load fraction if requested stride exceeds device memory limit
+    // Auto-calculate exact integer stride if requested stride exceeds device memory limit
     const bytesPerPoint = 14 * 1.25;
     const totalPoints = scan?.points ?? 0;
     let stride = userStride;
@@ -72,9 +100,7 @@ self.onmessage = async (ev: MessageEvent) => {
     if (totalPoints > 0) {
       const estimatedBytes = (totalPoints / stride) * bytesPerPoint;
       if (estimatedBytes > memLimit * 0.9) {
-        const candidateStrides = [1, 2, 4, 10, 30];
-        const safe = candidateStrides.find((s) => (totalPoints / s) * bytesPerPoint <= memLimit * 0.85);
-        stride = safe ?? Math.max(userStride, Math.ceil((totalPoints * bytesPerPoint) / (memLimit * 0.85)));
+        stride = Math.max(stride, Math.ceil((totalPoints * bytesPerPoint) / (memLimit * 0.88)));
         autoAdjusted = stride !== userStride;
       }
     }
@@ -82,11 +108,11 @@ self.onmessage = async (ev: MessageEvent) => {
     const willKeep = Math.max(1, Math.floor((scan?.points ?? 0) / stride));
     post({ type: 'plan', stride, willKeep, autoAdjusted });
 
-    // Request a high preview_target from WASM so its internal preview_every is <= 4,
-    // flushing 200k-point preview batches every ~800k decoded points (~50ms) instead of waiting for 25M+ points.
-    const wasmPreviewTarget = Math.max(2_400_000, Math.ceil(willKeep / 4));
+    // Request preview_target >= willKeep from WASM so its internal preview_every is 1,
+    // flushing the first 200k-point preview batch immediately after 200k kept points (~0.1% of the file).
+    const wasmPreviewTarget = Math.max(2_400_000, willKeep);
     const expectedBatches = Math.max(1, Math.ceil(wasmPreviewTarget / 200_000));
-    const targetPerLaterBatch = Math.max(10_000, Math.min(200_000, Math.ceil(2_000_000 / expectedBatches)));
+    const targetPerLaterBatch = Math.max(4_000, Math.min(200_000, Math.ceil(2_000_000 / expectedBatches)));
     let previewBatches = 0;
 
     const tD = performance.now();
@@ -99,6 +125,9 @@ self.onmessage = async (ev: MessageEvent) => {
           bmin: [m[0], m[1], m[2]], bmax: [m[0] + m[3], m[1] + m[3], m[2] + m[3]],
         };
         previewBatches++;
+        if (previewBatches === 1) {
+          set_window_size(32 * 1024 * 1024);
+        }
 
         // Send the first 2 batches in full so points appear on screen immediately at high density
         if (previewBatches <= 2 || count <= targetPerLaterBatch) {

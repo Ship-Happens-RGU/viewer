@@ -3,7 +3,7 @@
 // Imports PLY and LAS files into the same cell format the E57 path produces,
 // so the rest of the app cannot tell the difference. Also the landing spot for
 // scans exported by phone LiDAR apps.
-import init, { PointSink, LazReader } from './wasm/e57_wasm.js';
+import init, { PointSink, LazReader, set_window_size } from './wasm/e57_wasm.js';
 import wasmUrl from './wasm/e57_wasm_bg.wasm?url';
 import { sniff, parsePly, parseLas, parseAscii, parsePtx } from '../shared/importers.mjs';
 
@@ -16,6 +16,7 @@ self.onmessage = async (ev: MessageEvent) => {
   try {
     if (!ready) ready = init({ module_or_path: wasmUrl });
     await ready;
+    set_window_size(32 * 1024 * 1024);
     const file: File = m.file;
     const remoteUrl: string | undefined = m.remoteUrl;
     const fileSize: number = m.remoteSize ?? file.size;
@@ -25,7 +26,7 @@ self.onmessage = async (ev: MessageEvent) => {
       const end = Math.min(offset + length, fileSize);
       if (end <= offset) return new Uint8Array(0);
       if (remoteUrl) {
-        if (offset === 0 && end <= file.size) {
+        if (end <= file.size) {
           const buf = fr.readAsArrayBuffer(file.slice(offset, end));
           bytesPulled += buf.byteLength;
           return new Uint8Array(buf);
@@ -79,11 +80,11 @@ self.onmessage = async (ev: MessageEvent) => {
       const bytesPerPoint = 14 * 1.25;
       let autoAdjusted = false;
 
-      if (im.points > 0 && (im.points / stride) * bytesPerPoint > memLimit * 0.9) {
-        const candidateStrides = [1, 2, 4, 10, 30];
-        const safe = candidateStrides.find((s) => (im.points / s) * bytesPerPoint <= memLimit * 0.85);
-        stride = safe ?? Math.max(userStride, Math.ceil((im.points * bytesPerPoint) / (memLimit * 0.85)));
-        autoAdjusted = stride !== userStride;
+      if (im.points > 0) {
+        if ((im.points / stride) * bytesPerPoint > memLimit * 0.9) {
+          stride = Math.max(stride, Math.ceil((im.points * bytesPerPoint) / (memLimit * 0.88)));
+          autoAdjusted = stride !== userStride;
+        }
       }
 
       const meta = {
@@ -97,9 +98,9 @@ self.onmessage = async (ev: MessageEvent) => {
       post({ type: 'meta', meta, openMs: performance.now() - t0, bytesPulled });
       post({ type: 'plan', stride, willKeep, autoAdjusted });
       const b = im.bounds;
-      const wasmPreviewTarget = Math.max(2_400_000, Math.ceil(willKeep / 4));
+      const wasmPreviewTarget = Math.max(2_400_000, willKeep);
       const expectedBatches = Math.max(1, Math.ceil(wasmPreviewTarget / 200_000));
-      targetPerLaterBatch = Math.max(10_000, Math.min(200_000, Math.ceil(2_000_000 / expectedBatches)));
+      targetPerLaterBatch = Math.max(4_000, Math.min(200_000, Math.ceil(2_000_000 / expectedBatches)));
       sink = new PointSink(new Float64Array([b[0], b[2], b[4], b[1], b[3], b[5]]), willKeep, memLimit, wasmPreviewTarget);
     };
     const onBatch = (bt: any) => {

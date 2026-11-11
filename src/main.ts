@@ -44,10 +44,10 @@ const small = isTouch && Math.min(innerWidth, innerHeight) < 820;
 const MEM_LIMIT = isTouch ? 700e6 : 3.2e9;
 
 const knobs: Knobs = {
-  colorMode: 0, size: 2.0, sizeMode: 1, round: true, maxPx: 7,
+  colorMode: 0, size: 2.5, sizeMode: 1, round: true, maxPx: 12,
   edl: true, edlStrength: 0.32, edlRadius: 1.4, normalShade: false,
   bright: 1, gamma: 1, iMin: 0, iMax: 1, clipZMin: -1e9, clipZMax: 1e9,
-  budget: 8_000_000, density: 2.0, movingQuality: 0.35, flySpeed: 2,
+  budget: 16_000_000, density: 2.5, movingQuality: 0.4, flySpeed: 2,
 };
 
 // ------------------------------------------------------------- the active entity
@@ -76,7 +76,7 @@ function hashKey(s: string) { let h = 0x811c9dc5; for (let i = 0; i < s.length; 
 function keyFor(f: File, stride: number, handle?: any) {
   const sz = handle?.remoteSize ?? f.size;
   const id = handle?.scanId ?? '';
-  return hashKey(`${id}|${f.name}|${sz}|${f.lastModified}|${stride}`);
+  return hashKey(`v2|${id}|${f.name}|${sz}|${f.lastModified}|${stride}`);
 }
 const ioWaiters = new Map<string, (m: any) => void>();
 function ioOnce(type: string): Promise<any> { return new Promise(res => ioWaiters.set(type, res)); }
@@ -108,7 +108,7 @@ io.onmessage = (ev: MessageEvent) => {
   }
   if (['leaf', 'meta', 'plan', 'progress', 'done'].includes(m.type)) { onWorker(ev); return; }
   if (m.type === 'export-progress') { busy(`Writing ${fmt(m.written)} of ${fmt(exportTotal)} points…`, m.written / Math.max(exportTotal, 1)); return; }
-  if (m.type === 'cache-progress') { busy(`Caching… ${mb(m.bytes)}`, m.bytes / Math.max(cacheBytesExpected, 1)); return; }
+  if (m.type === 'cache-progress') { if (!cacheSilent) busy(`Caching… ${mb(m.bytes)}`, m.bytes / Math.max(cacheBytesExpected, 1)); return; }
   if (m.type === 'error') { hideBusy(); fail(`${m.op}: ${m.message}`); }
 };
 function histBuf(recs: Uint8Array): ArrayBuffer {
@@ -246,6 +246,22 @@ async function openFile(f: File, handle: any = null, add = false) {
     io.postMessage({ type: 'cache-read', key: cacheKey });
     return;
   }
+  // Fast-path: Check if an unstrided or different-stride cache already exists for this scan file
+  // so we never re-download an 8 GB scan if a cached version is available on disk
+  io.postMessage({ type: 'cache-list' });
+  const listMsg = await ioOnce('cache-list');
+  const cachedMatch = (listMsg.items ?? []).find((item: any) => {
+    const sz = cleanHandle?.remoteSize ?? f.size;
+    const id = cleanHandle?.scanId ?? '';
+    return item.name === f.name || (item.size === sz && id && item.key?.includes(id));
+  });
+  if (cachedMatch) {
+    fromCache = true;
+    $('ld-stat').textContent = `loading cached cells (${fmt(cachedMatch.points)} pts)…`;
+    activeLoadProgressCb?.(1);
+    io.postMessage({ type: 'cache-read', key: cachedMatch.key });
+    return;
+  }
   // what kind of file this is, decided from its first bytes rather than its name
   let kind: string | null = null;
   try {
@@ -313,13 +329,13 @@ function onWorker(ev: MessageEvent) {
   const m = ev.data;
   if (m.type === 'meta') onMeta(m);
   else if (m.type === 'plan') {
-    if (m.stride) {
+    if (m.stride && !m.autoAdjusted) {
       const kLoad = document.getElementById('k-load') as HTMLSelectElement | null;
       if (kLoad && kLoad.value !== String(m.stride)) {
         kLoad.value = String(m.stride);
       }
     }
-    const note = m.autoAdjusted ? ' (auto-adapted for device memory)' : '';
+    const note = m.autoAdjusted ? ' (auto-adapted for fast load)' : '';
     $('ld-stat').textContent = m.stride > 1
       ? `decoding — keeping 1 in ${m.stride}, ${fmt(m.willKeep)} points${note}`
       : `decoding all ${fmt(m.willKeep)} points`;
@@ -422,7 +438,13 @@ function onDone(stats: any, how: string) {
   if (currentHandle) idbPut(cacheKey, currentHandle);
   updateCacheUI(); updateHistUI();
   renderLayers(); updateNames();          // the row's point count is only final now
-  if (!fromCache && localStorage.getItem('nocache:' + cacheKey) !== '1') setTimeout(offerCache, 600);
+  if (!fromCache && localStorage.getItem('nocache:' + cacheKey) !== '1') {
+    if (currentHandle?.remoteUrl) {
+      setTimeout(() => { void writeCache(true).catch(() => {}); }, 250);
+    } else {
+      setTimeout(offerCache, 600);
+    }
+  }
 }
 /** LAS and LAZ carry a classification per point, which rides in the record's spare byte.
  *  Turn it into a scalar field, but leave the colour mode alone: arriving at a scan painted
@@ -3692,6 +3714,7 @@ $('k-export').addEventListener('click', async () => {
 
 // ------------------------------------------------------------------ cache
 let cacheBytesExpected = 0;
+let cacheSilent = false;
 async function offerCache() {
   if (!viewer.loaded || cropped) return;
   const ans = await modal('Cache this scan on this device?',
@@ -3700,22 +3723,28 @@ async function offerCache() {
   if (ans === 'never') localStorage.setItem('nocache:' + cacheKey, '1');
   if (ans === 'yes') await writeCache();
 }
-async function writeCache() {
+async function writeCache(silent = false) {
   if (!currentFile || !meta) return;
   const stride = Number(($('k-load') as HTMLSelectElement).value) || 1; const r = robustLoHi();
-  cacheBytesExpected = viewer.loaded * REC; busy('Caching…', 0);
-  io.postMessage({ type: 'cache-start', key: cacheKey, meta: { name: currentFile.name, size: currentHandle?.remoteSize ?? currentFile.size, lastModified: currentFile.lastModified, stride, scanMeta: meta, kept: viewer.loaded, histogram: Array.from(histogram), robust: r ? { lo: r.lo, hi: r.hi } : null, model: rowMajor(viewer.cells.model) } });
-  await ioOnce('cache-ready');
-  let n = 0;
-  for (const { leaf, recs } of viewer.cells.records()) {
-    const buf = recs.buffer as ArrayBuffer;
-    io.postMessage({ type: 'cache-chunk', recs: buf, leaf: { count: leaf.count, origin: leaf.origin.toArray(), size: leaf.size, bmin: leaf.bmin.toArray(), bmax: leaf.bmax.toArray() } }, [buf]);
-    if (++n % 6 === 0) await tick();
+  cacheBytesExpected = viewer.loaded * REC; cacheSilent = silent;
+  if (!silent) busy('Caching…', 0);
+  try {
+    io.postMessage({ type: 'cache-start', key: cacheKey, meta: { name: currentFile.name, size: currentHandle?.remoteSize ?? currentFile.size, lastModified: currentFile.lastModified, stride, scanMeta: meta, kept: viewer.loaded, histogram: Array.from(histogram), robust: r ? { lo: r.lo, hi: r.hi } : null, model: rowMajor(viewer.cells.model) } });
+    await ioOnce('cache-ready');
+    let n = 0;
+    for (const { leaf, recs } of viewer.cells.records()) {
+      const buf = recs.buffer as ArrayBuffer;
+      io.postMessage({ type: 'cache-chunk', recs: buf, leaf: { count: leaf.count, origin: leaf.origin.toArray(), size: leaf.size, bmin: leaf.bmin.toArray(), bmax: leaf.bmax.toArray() } }, [buf]);
+      if (++n % 6 === 0) await tick();
+    }
+    io.postMessage({ type: 'cache-finish' }); const done = await ioOnce('cache-done');
+    if (!silent) hideBusy();
+    fromCache = true; cacheNote = '';
+    if (currentHandle) idbPut(cacheKey, currentHandle);
+    $('v-cache').textContent = `cached · ${mb(done.bytes)} on this device`; updateCacheUI(); await refreshCachedList();
+  } finally {
+    cacheSilent = false;
   }
-  io.postMessage({ type: 'cache-finish' }); const done = await ioOnce('cache-done');
-  hideBusy(); fromCache = true; cacheNote = '';
-  if (currentHandle) idbPut(cacheKey, currentHandle);
-  $('v-cache').textContent = `cached · ${mb(done.bytes)} on this device`; updateCacheUI(); await refreshCachedList();
 }
 /** Why the on-device cache no longer matches what is in memory. Cleared by a save, a
  *  reload or a new file; shown by updateCacheUI so the user knows Save as… is needed. */

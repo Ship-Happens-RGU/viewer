@@ -173,10 +173,14 @@ export class Leaf {
     this.bmin = bmin; this.bmax = bmax;
     this.center = bmin.clone().add(bmax).multiplyScalar(0.5);
     this.radius = Math.max(bmax.distanceTo(bmin) * 0.5, 1e-3);
-    // spacing: assume points lie on a surface spanning the largest face of the tight box
+    // spacing: estimate typical inter-point spacing on surfaces.
+    // In real-world architectural/infrastructure scans, points lie on roofs, ceilings,
+    // exterior and interior walls across 3D surfaces rather than a single flat plane.
+    // Using total bounding area provides a realistic estimate so adaptive splats overlap
+    // properly without leaving pinhole gaps between points.
     const d = bmax.clone().sub(bmin);
-    const area = Math.max(d.x * d.y, d.y * d.z, d.x * d.z, 1e-6);
-    this.spacing = Math.min(Math.max(Math.sqrt(area / Math.max(this.capacity, 1)), 1e-4), m.size * 0.5);
+    const area = 2.0 * (d.x * d.y + d.y * d.z + d.x * d.z);
+    this.spacing = Math.min(Math.max(Math.sqrt(Math.max(area, 1e-4) / Math.max(this.capacity, 1)), 1e-4), m.size * 0.5);
 
     ({ vbo: this.vbo, vao: this.vao } = Leaf.alloc(gl, this.capacity, blocks));
   }
