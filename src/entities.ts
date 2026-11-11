@@ -65,7 +65,9 @@ export class Entity {
   /** Percentile framing box, in world space. Null until the loader reports one. */
   robust: THREE.Box3 | null = null;
   /** An optional colour multiplier, so two overlapping scans can be told apart. */
-  tint = { on: false, color: '#66ccff' };
+  tint: { on: boolean; color: string; weight?: number } = { on: false, color: '#66ccff', weight: 0.0 };
+  /** Opacity for translucent overlay rendering (1.0 = opaque). */
+  opacity = 1.0;
   state: EntityState = blankState();
 
   constructor(gl: WebGL2RenderingContext, id: string, name: string) {

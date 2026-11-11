@@ -194,7 +194,7 @@ function resetForLoad(name: string, keepOthers = false) {
 }
 $('gl').addEventListener('pointerdown', () => { if (worker) userMovedDuringLoad = true; });
 $('gl').addEventListener('wheel', () => { if (worker) userMovedDuringLoad = true; }, { passive: true });
-async function openFile(f: File, handle: any = null, add = false) {
+async function openFile(f: File, handle: any = null, add = false, compare = false, compareOpacity = 0.6) {
   const effectiveSize = handle?.remoteSize ?? f.size;
   if (effectiveSize < 48) { fail('That file is too small to be a scan.'); return; }
   // A file with faces in it is a mesh, and a mesh is a layer of its own kind. PLY is the one
@@ -226,6 +226,14 @@ async function openFile(f: File, handle: any = null, add = false) {
     captureActive();
     const e = viewer.addEntity(f.name.replace(/\.[^.]+$/, ''));
     viewer.activeId = e.id;
+    if (compare) {
+      e.tint = { on: true, color: '#ffb6c1', weight: 1.0 };
+      e.opacity = compareOpacity;
+      if (viewer.entities[0]) {
+        viewer.entities[0].tint = { on: false, color: '#ffffff', weight: 0.0 };
+        viewer.entities[0].opacity = 1.0;
+      }
+    }
     restoreActive();
   }
   activeLoadProgressCb = typeof handle?.onProgress === 'function' ? handle.onProgress : null;

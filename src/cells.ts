@@ -34,6 +34,7 @@ uniform float uScreenH, uSlope, uMinPx, uMaxPx, uClipZMin, uClipZMax;
 uniform float uOrthoMpp;
 uniform float uSFMin, uSFMax, uSFLo, uSFHi, uSFHide;
 uniform vec3 uTint;                      // per-entity colour multiplier, 1,1,1 when off
+uniform float uTintWeight;               // 0.0 = multiplier (vCol *= uTint), > 0.0 = blend towards uTint
 // Regions: up to 16, each a box (1), sphere (2), slab (3) or prism (4) with its own frame.
 // role 0 = keep (a point must be inside at least one keep region),
 // role 1 = delete-pending (inside is tinted), role 2 = delete (inside is dimmed / hidden)
@@ -108,7 +109,11 @@ void main(){
   else if (uColorMode < 5.5) vCol = aSF < -1.0e17 ? vec3(0.32, 0.34, 0.36)
                                   : ramp((aSF - uSFMin) / max(uSFMax - uSFMin, 1e-9));
   else                       vCol = vec3(0.72, 0.75, 0.76);
-  vCol *= uTint;
+  if (uTintWeight > 0.0) {
+    vCol = mix(vCol * uTint, uTint, clamp(uTintWeight, 0.0, 1.0));
+  } else {
+    vCol *= uTint;
+  }
   // value filter: points outside the kept range dim, or vanish when hiding
   if (uSFHi > uSFLo) {
     bool inRange = aSF > -1.0e17 && aSF >= uSFLo && aSF <= uSFHi;
@@ -122,11 +127,22 @@ void main(){
 
 const FS = `#version 300 es
 precision highp float;
-uniform float uRound, uNormalShade, uBright, uGamma;
+const int bayer4[16] = int[16](
+   0,  8,  2, 10,
+  12,  4, 14,  6,
+   3, 11,  1,  9,
+  15,  7, 13,  5
+);
+uniform float uRound, uNormalShade, uBright, uGamma, uOpacity;
 in vec3 vCol; in float vLogDepth; in vec3 vNrm; flat in float vDrop; flat in float vOut; flat in float vTint;
 out vec4 frag;
 void main(){
   if (vDrop > 0.5) discard;
+  if (uOpacity < 0.999) {
+    int x = int(gl_FragCoord.x) & 3;
+    int y = int(gl_FragCoord.y) & 3;
+    if ((float(bayer4[y * 4 + x]) + 0.5) / 16.0 >= uOpacity) discard;
+  }
   if (uRound > 0.5) { vec2 d = gl_PointCoord * 2.0 - 1.0; if (dot(d, d) > 1.0) discard; }
   vec3 c = vCol;
   if (uNormalShade > 0.5) {
@@ -304,6 +320,8 @@ export interface DrawParams {
   orthoMpp?: number;
   /** Colour multiplier for this entity. */
   tint?: [number, number, number];
+  tintWeight?: number;
+  opacity?: number;
 }
 
 export type RegionKind = 'box' | 'sphere' | 'slab' | 'prism';
@@ -473,7 +491,7 @@ export class CellRenderer {
     for (const n of ['uSFMin','uSFMax','uSFLo','uSFHi','uSFHide',
       'uVP','uView','uOrigin','uSize','uSpacing','uPtSize','uSizeMode','uColorMode','uZMin','uZMax',
                      'uIMin','uIMax','uScreenH','uSlope','uMinPx','uMaxPx','uClipZMin','uClipZMax',
-                     'uRound','uNormalShade','uBright','uGamma','uRegN','uRegHide','uModel','uOrthoMpp','uTint']) {
+                     'uRound','uNormalShade','uBright','uGamma','uRegN','uRegHide','uModel','uOrthoMpp','uTint','uTintWeight','uOpacity']) {
       this.u[n] = gl.getUniformLocation(this.prog, n);
     }
     for (let i = 0; i < 16; i++) for (const n of ['uRegMode', 'uRegRole', 'uRegC', 'uRegS', 'uRegRot']) {
@@ -1112,7 +1130,7 @@ export class CellRenderer {
 
     // ---- state ----
     gl.useProgram(this.prog);
-    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true);
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
     gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
     gl.uniformMatrix4fv(this.u.uVP, false, this.vp.elements);
     gl.uniformMatrix4fv(this.u.uView, false, camera.matrixWorldInverse.elements);
@@ -1128,6 +1146,8 @@ export class CellRenderer {
     gl.uniform1f(this.u.uOrthoMpp, mpp);
     const tint = p.tint ?? [1, 1, 1];
     gl.uniform3f(this.u.uTint, tint[0], tint[1], tint[2]);
+    gl.uniform1f(this.u.uTintWeight, p.tintWeight ?? 0);
+    gl.uniform1f(this.u.uOpacity, p.opacity ?? 1);
     gl.uniform1f(this.u.uMinPx, p.minPx); gl.uniform1f(this.u.uMaxPx, p.maxPx);
     gl.uniform1f(this.u.uClipZMin, p.clipZMin); gl.uniform1f(this.u.uClipZMax, p.clipZMax);
     gl.uniform1f(this.u.uRound, p.round ? 1 : 0); gl.uniform1f(this.u.uNormalShade, p.normalShade ? 1 : 0);

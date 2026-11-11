@@ -1371,7 +1371,13 @@ export class Viewer {
       };
       this.stats = { leavesVisible: 0, leavesDrawn: 0, pointsDrawn: 0, pointsTotal: 0 };
       for (const e of vis) {
-        const s = e.cells.draw(this.camera, { ...params, budget: Math.max(50_000, Math.round(budget * e.cells.renderedTotal / all)), tint: e.tintRgb() });
+        const s = e.cells.draw(this.camera, {
+          ...params,
+          budget: Math.max(50_000, Math.round(budget * e.cells.renderedTotal / all)),
+          tint: e.tintRgb(),
+          tintWeight: e.tint.on ? (e.tint.weight ?? 0) : 0,
+          opacity: e.opacity ?? 1,
+        });
         this.stats.leavesVisible += s.leavesVisible; this.stats.leavesDrawn += s.leavesDrawn;
         this.stats.pointsDrawn += s.pointsDrawn; this.stats.pointsTotal += s.pointsTotal;
       }
