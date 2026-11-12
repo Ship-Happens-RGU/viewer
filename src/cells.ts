@@ -35,6 +35,7 @@ uniform float uOrthoMpp;
 uniform float uSFMin, uSFMax, uSFLo, uSFHi, uSFHide;
 uniform vec3 uTint;                      // per-entity colour multiplier, 1,1,1 when off
 uniform float uTintWeight;               // 0.0 = multiplier (vCol *= uTint), > 0.0 = blend towards uTint
+uniform float uDepthBias;                // pushes overlay forward in depth space so co-planar points aren't culled
 // Regions: up to 16, each a box (1), sphere (2), slab (3) or prism (4) with its own frame.
 // role 0 = keep (a point must be inside at least one keep region),
 // role 1 = delete-pending (inside is tinted), role 2 = delete (inside is dimmed / hidden)
@@ -63,7 +64,11 @@ void main(){
   // where they are drawn. Nothing is ever baked into the 16-bit positions.
   vec3 p = (uModel * vec4(uOrigin + aPos * (uSize / 65536.0), 1.0)).xyz;
   vec4 mv = uView * vec4(p, 1.0);
-  gl_Position = uVP * vec4(p, 1.0);
+  vec4 pos = uVP * vec4(p, 1.0);
+  if (uDepthBias != 0.0) {
+    pos.z -= uDepthBias * pos.w;
+  }
+  gl_Position = pos;
   vLogDepth = log2(max(-mv.z, 1e-4));
   vNrm = mat3(uModel) * aNrm.xyz;
   vDrop = (p.z < uClipZMin || p.z > uClipZMax) ? 1.0 : 0.0;
@@ -322,6 +327,7 @@ export interface DrawParams {
   tint?: [number, number, number];
   tintWeight?: number;
   opacity?: number;
+  depthBias?: number;
 }
 
 export type RegionKind = 'box' | 'sphere' | 'slab' | 'prism';
@@ -491,7 +497,7 @@ export class CellRenderer {
     for (const n of ['uSFMin','uSFMax','uSFLo','uSFHi','uSFHide',
       'uVP','uView','uOrigin','uSize','uSpacing','uPtSize','uSizeMode','uColorMode','uZMin','uZMax',
                      'uIMin','uIMax','uScreenH','uSlope','uMinPx','uMaxPx','uClipZMin','uClipZMax',
-                     'uRound','uNormalShade','uBright','uGamma','uRegN','uRegHide','uModel','uOrthoMpp','uTint','uTintWeight','uOpacity']) {
+                     'uRound','uNormalShade','uBright','uGamma','uRegN','uRegHide','uModel','uOrthoMpp','uTint','uTintWeight','uOpacity','uDepthBias']) {
       this.u[n] = gl.getUniformLocation(this.prog, n);
     }
     for (let i = 0; i < 16; i++) for (const n of ['uRegMode', 'uRegRole', 'uRegC', 'uRegS', 'uRegRot']) {
@@ -1148,6 +1154,7 @@ export class CellRenderer {
     gl.uniform3f(this.u.uTint, tint[0], tint[1], tint[2]);
     gl.uniform1f(this.u.uTintWeight, p.tintWeight ?? 0);
     gl.uniform1f(this.u.uOpacity, p.opacity ?? 1);
+    gl.uniform1f(this.u.uDepthBias, p.depthBias ?? 0);
     gl.uniform1f(this.u.uMinPx, p.minPx); gl.uniform1f(this.u.uMaxPx, p.maxPx);
     gl.uniform1f(this.u.uClipZMin, p.clipZMin); gl.uniform1f(this.u.uClipZMax, p.clipZMax);
     gl.uniform1f(this.u.uRound, p.round ? 1 : 0); gl.uniform1f(this.u.uNormalShade, p.normalShade ? 1 : 0);

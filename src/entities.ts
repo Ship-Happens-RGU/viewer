@@ -68,6 +68,8 @@ export class Entity {
   tint: { on: boolean; color: string; weight?: number } = { on: false, color: '#66ccff', weight: 0.0 };
   /** Opacity for translucent overlay rendering (1.0 = opaque). */
   opacity = 1.0;
+  /** Forward depth bias so overlay layers aren't culled by co-planar surfaces. */
+  depthBias = 0.0;
   state: EntityState = blankState();
 
   constructor(gl: WebGL2RenderingContext, id: string, name: string) {

@@ -1377,6 +1377,7 @@ export class Viewer {
           tint: e.tintRgb(),
           tintWeight: e.tint.on ? (e.tint.weight ?? 0) : 0,
           opacity: e.opacity ?? 1,
+          depthBias: e.depthBias ?? 0,
         });
         this.stats.leavesVisible += s.leavesVisible; this.stats.leavesDrawn += s.leavesDrawn;
         this.stats.pointsDrawn += s.pointsDrawn; this.stats.pointsTotal += s.pointsTotal;

@@ -229,9 +229,11 @@ async function openFile(f: File, handle: any = null, add = false, compare = fals
     if (compare) {
       e.tint = { on: true, color: '#ffb6c1', weight: 1.0 };
       e.opacity = compareOpacity;
+      e.depthBias = 0.003;
       if (viewer.entities[0]) {
         viewer.entities[0].tint = { on: false, color: '#ffffff', weight: 0.0 };
         viewer.entities[0].opacity = 1.0;
+        viewer.entities[0].depthBias = 0.0;
       }
     }
     restoreActive();
@@ -409,14 +411,17 @@ function onMeta(m: any) {
   if (m.robust) viewer.setRobustBounds(m.robust.lo, m.robust.hi);
   // a cached scan reopens with the transform it was cached with (row-major in the meta)
   const shift = (s.translation ?? [0, 0, 0]) as number[];
-  if (m.model && m.model.length === 16) viewer.setModel(fromRowMajor(m.model as number[]));
-  else if (!frameOrigin) frameOrigin = [...shift];
-  else if (pendingAdd) {
+  const firstShift = (viewer.entities[0]?.state?.meta?.scans?.[0]?.translation ?? frameOrigin ?? shift) as number[];
+  if (!frameOrigin) frameOrigin = [...firstShift];
+
+  if (pendingAdd) {
     // two files only agree about the world through their own global shifts; place this one
     // relative to the first layer's frame so both are comparable
     const d = shift.map((v, i) => v - (frameOrigin![i] ?? 0));
     if (d.some(v => Math.abs(v) > 1e-9)) viewer.setModel(new THREE.Matrix4().makeTranslation(d[0], d[1], d[2]));
     $('v-layers').textContent = `placed by its global shift · ${d.map(v => v.toFixed(3)).join(', ')} m from ${layerName(viewer.entities[0])}`;
+  } else if (m.model && m.model.length === 16) {
+    viewer.setModel(fromRowMajor(m.model as number[]));
   }
   pendingAdd = false;
   updateTransformUI();
