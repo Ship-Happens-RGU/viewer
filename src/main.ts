@@ -577,15 +577,15 @@ $('k-fit').addEventListener('click', () => viewer.fit());
 $('k-reload').addEventListener('click', () => reloadScan());
 
 // ------------------------------------------------------------------ modes & tools
-function setMode(fly: boolean) {
-  viewer.setFly(fly);
-  $('k-fly').classList.toggle('on', fly); $('k-orbit').classList.toggle('on', !fly); $('gl').classList.toggle('fly', fly);
-  $('v-navhint').innerHTML = fly ? '<b>W A S D</b> move · <b>Q E</b> down/up · drag to look · scroll changes speed · <b>Shift</b> ×4 · double-click walks toward a point · <b>F</b> back to orbit'
-    : 'Drag to orbit · scroll zooms toward the cursor · <b>double-click</b> a point to orbit around it · <b>F</b> to fly';
-  $('joy').classList.toggle('hidden', !(fly && isTouch));
+function setMode(_fly: boolean) {
+  viewer.setFly(true);
+  $('k-fly').classList.add('on'); $('gl').classList.add('fly');
+  $('v-navhint').innerHTML = '<b>W A S D</b> move · <b>Q E</b> down/up · drag to look · scroll changes speed · <b>Shift</b> ×4 · double-click moves toward a point';
+  $('joy').classList.toggle('hidden', !isTouch);
   updatePill(); syncToolbar();
 }
-$('k-fly').addEventListener('click', () => setMode(true)); $('k-orbit').addEventListener('click', () => setMode(false));
+$('k-fly').addEventListener('click', () => setMode(true));
+setMode(true);
 function setTool(t: 'none' | 'measure' | 'segment' | 'place') {
   if (viewer.tool === 'segment' && t !== 'segment') endSegment();
   viewer.setTool(t);
@@ -624,17 +624,16 @@ viewer.onClick = (world, cx, cy) => {
   c.classList.remove('hidden');
 };
 function syncToolbar() {
-  const cur = viewer.bubble ? 'photo' : viewer.tool === 'measure' ? 'measure' : viewer.tool === 'place' || viewer.tool === 'segment' ? 'segment' : viewer.fly.enabled ? 'fly' : 'orbit';
+  const cur = viewer.bubble ? 'photo' : viewer.tool === 'measure' ? 'measure' : viewer.tool === 'place' || viewer.tool === 'segment' ? 'segment' : 'fly';
   document.querySelectorAll<HTMLButtonElement>('#toolbar button').forEach(b => b.classList.toggle('on', b.dataset.tool === cur));
   const photoBtn = document.querySelector<HTMLButtonElement>('#toolbar [data-tool="photo"]'); if (photoBtn) photoBtn.classList.toggle('hidden', !viewer.bubble);
 }
 document.querySelectorAll<HTMLButtonElement>('#toolbar button').forEach(b => b.addEventListener('click', () => {
   const t = b.dataset.tool;
-  if (t === 'orbit') { setTool('none'); setMode(false); }
-  else if (t === 'fly') { setTool('none'); setMode(true); }
-  else if (t === 'measure') { setMode(false); setTool('measure'); }
-  else if (t === 'segment') { setMode(false); setTool('place'); }
-  else if (t === 'crop') { setMode(false); setTool('none'); document.querySelector('[data-grp="crop"]')?.classList.remove('closed'); toggleSheet(true); cropUI.on = true; $<HTMLInputElement>('k-cropon').checked = true; updateCropUI(); }
+  if (t === 'fly') { setTool('none'); setMode(true); }
+  else if (t === 'measure') { setTool('measure'); }
+  else if (t === 'segment') { setTool('place'); }
+  else if (t === 'crop') { setTool('none'); document.querySelector('[data-grp="crop"]')?.classList.remove('closed'); toggleSheet(true); cropUI.on = true; $<HTMLInputElement>('k-cropon').checked = true; updateCropUI(); }
   else if (t === 'photo') viewer.exitBubble();
 }));
 document.querySelectorAll<HTMLButtonElement>('#joy button').forEach(b => {
@@ -660,7 +659,7 @@ addEventListener('keydown', (e: KeyboardEvent) => {
     if (inUi) return;
     e.preventDefault(); $('panel').classList.toggle('hidden'); viewer.resize(); viewer.touch();
   }
-  else if (e.key === 'f' || e.key === 'F') setMode(!viewer.fly.enabled);
+  else if (e.key === 'f' || e.key === 'F') setMode(true);
   else if (e.key === 'm' || e.key === 'M') setTool(viewer.tool === 'measure' ? 'none' : 'measure');
   else if (e.key === 's') setTool(viewer.tool === 'place' ? 'none' : 'place');
   else if (e.key === 'S') setTool(viewer.tool === 'segment' ? 'none' : 'segment');   // shift: the outline tool
