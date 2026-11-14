@@ -1158,7 +1158,7 @@ export class Viewer {
     const az = azDeg * Math.PI / 180, el = elDeg * Math.PI / 180;
     this.camera.position.set(t.x + d * Math.cos(el) * Math.cos(az), t.y + d * Math.cos(el) * Math.sin(az), t.z + d * Math.sin(el));
     this.camera.lookAt(this.controls.target);
-    if (!quiet && this.tool !== 'segment') this.fly.enter();
+    if (this.tool !== 'segment') this.fly.enter();
     this.touch();
   }
   getView() { return { p: this.camera.position.toArray(), t: this.controls.target.toArray(), fly: this.fly.enabled }; }
