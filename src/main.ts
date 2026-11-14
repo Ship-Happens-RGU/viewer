@@ -3816,6 +3816,22 @@ async function enterStation(i: number) {
   try { const bmp = await createImageBitmap(new Blob([r.bytes], { type: 'image/jpeg' }), { resizeWidth: isTouch ? 2048 : 4096, resizeQuality: 'high' } as any); viewer.enterBubble(i, bmp); $('bubble-ui').classList.remove('hidden'); updatePill(); syncToolbar(); }
   finally { hideBusy(); }
 }
+async function openPanorama(index = 0) {
+  if (viewer.stations.length > 0 && currentFile && (viewer.stations[index]?.bytes ?? 0) > 0) {
+    await enterStation(index);
+    return;
+  }
+  if (!viewer.loaded) throw new Error('load a scan first');
+  busy('Generating 360° panorama…'); await tick();
+  try {
+    await viewer.createSyntheticPanorama();
+    $('v-stations').textContent = '360° panorama generated from scan';
+    $('bubble-ui').classList.remove('hidden');
+    updatePill(); syncToolbar();
+  } finally {
+    hideBusy();
+  }
+}
 viewer.onStationClick = (i) => enterStation(i).catch(e => fail('Panorama failed: ' + (e?.message ?? e)));
 viewer.onBubbleExit = () => { $('bubble-ui').classList.add('hidden'); updatePill(); syncToolbar(); };
 $('k-bubble-exit').addEventListener('click', () => viewer.exitBubble());
@@ -4484,7 +4500,8 @@ refreshCachedList();
   set anaTileBudget(v: number) { anaTileFixed = v; },
   get anaTileBudget() { return anaTileFixed || Math.max(1.2e6, Math.min(anaCap(), Math.floor(POOL_BYTES / (anaPool() * BYTES_PER_POINT)))); }, noiseArgs, get anaUi() { return anaUi; },
   importMesh, measureActiveMesh, smoothActiveMesh, decimateActiveMesh, sampleMeshPoints, distanceToMesh,
-  replaceMesh, flipMesh, meshEntities, meshBlob, saveMesh, refreshMeshUI, setDisplay,
+  replaceMesh, flipMesh, meshEntities, meshBlob, saveMesh, refreshMeshUI, setDisplay, openPanorama, enterStation,
   modelF32, get lastFit() { return lastFit; }, defaultVoxelCm, pagedHit, image, get lastRender() { return lastRender; }, runView, runSection,
-  get meshFile() { return meshFile; }, get meshInfo() { return meshInfo; }
+  get meshFile() { return meshFile; }, get meshInfo() { return meshInfo; },
+  get currentFile() { return currentFile; }
 };

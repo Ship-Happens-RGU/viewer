@@ -1009,6 +1009,100 @@ export class Viewer {
     this.onBubbleExit?.(); this.touch();
   }
   setPointAlpha(a: number) { this.pointAlpha = a; if (this.bubble) { this.edlMat.uniforms.uPointAlpha.value = a; this.dirty = true; } }
+  async createSyntheticPanorama(center?: THREE.Vector3) {
+    const box = this.measuredBox(this.active);
+    const pos = center?.clone() ?? (box && !box.isEmpty() ? box.getCenter(new THREE.Vector3()) : this.controls.target.clone());
+    const faceSize = 512;
+    const eqW = 1536, eqH = 768;
+    const saved = this.saveCam();
+    const wasFly = this.fly.enabled;
+    if (wasFly) this.fly.exit();
+    this.exitBubble();
+
+    const faces: Array<{ fwd: [number, number, number]; up: [number, number, number]; right: [number, number, number] }> = [
+      { fwd: [1, 0, 0], up: [0, 0, 1], right: [0, -1, 0] },
+      { fwd: [-1, 0, 0], up: [0, 0, 1], right: [0, 1, 0] },
+      { fwd: [0, 1, 0], up: [0, 0, 1], right: [1, 0, 0] },
+      { fwd: [0, -1, 0], up: [0, 0, 1], right: [-1, 0, 0] },
+      { fwd: [0, 0, 1], up: [0, 1, 0], right: [-1, 0, 0] },
+      { fwd: [0, 0, -1], up: [0, -1, 0], right: [-1, 0, 0] },
+    ];
+
+    const faceCanvas = document.createElement('canvas');
+    faceCanvas.width = faceSize;
+    faceCanvas.height = faceSize;
+    const fCtx = faceCanvas.getContext('2d', { willReadFrequently: true })!;
+    const facePixels: Uint8ClampedArray[] = [];
+
+    try {
+      this.resizeTo(faceSize, faceSize);
+      this.camera.fov = 90;
+      this.camera.aspect = 1;
+      this.camera.near = 0.05;
+      this.camera.far = 4000;
+      this.camera.updateProjectionMatrix();
+
+      this.cleanRender(() => {
+        for (const f of faces) {
+          this.camera.position.copy(pos);
+          this.camera.up.set(f.up[0], f.up[1], f.up[2]);
+          this.controls.target.set(pos.x + f.fwd[0], pos.y + f.fwd[1], pos.z + f.fwd[2]);
+          this.camera.lookAt(this.controls.target);
+          this.dirty = true;
+          this.render();
+          fCtx.clearRect(0, 0, faceSize, faceSize);
+          fCtx.drawImage(this.canvas, 0, 0, faceSize, faceSize);
+          facePixels.push(fCtx.getImageData(0, 0, faceSize, faceSize).data);
+        }
+      });
+    } finally {
+      this.restoreCam(saved);
+      if (wasFly) this.fly.enter();
+    }
+
+    const eqData = new ImageData(eqW, eqH);
+    const out = eqData.data;
+    for (let y = 0; y < eqH; y++) {
+      const v = (y + 0.5) / eqH;
+      const el = (0.5 - v) * Math.PI;
+      const cosEl = Math.cos(el);
+      const dz = Math.sin(el);
+      for (let x = 0; x < eqW; x++) {
+        const u = (x + 0.5) / eqW;
+        const az = (0.5 - u) * Math.PI * 2;
+        const dx = cosEl * Math.cos(az);
+        const dy = cosEl * Math.sin(az);
+
+        let bestIdx = 0;
+        let bestDot = -1;
+        for (let fi = 0; fi < 6; fi++) {
+          const fw = faces[fi].fwd;
+          const dot = dx * fw[0] + dy * fw[1] + dz * fw[2];
+          if (dot > bestDot) { bestDot = dot; bestIdx = fi; }
+        }
+
+        const f = faces[bestIdx];
+        const rx = dx * f.right[0] + dy * f.right[1] + dz * f.right[2];
+        const ry = dx * f.up[0] + dy * f.up[1] + dz * f.up[2];
+        const ndcX = rx / bestDot;
+        const ndcY = ry / bestDot;
+        const px = Math.max(0, Math.min(faceSize - 1, Math.floor((ndcX * 0.5 + 0.5) * faceSize)));
+        const py = Math.max(0, Math.min(faceSize - 1, Math.floor((-ndcY * 0.5 + 0.5) * faceSize)));
+
+        const src = (py * faceSize + px) * 4;
+        const dst = (y * eqW + x) * 4;
+        const fp = facePixels[bestIdx];
+        out[dst] = fp[src];
+        out[dst + 1] = fp[src + 1];
+        out[dst + 2] = fp[src + 2];
+        out[dst + 3] = 255;
+      }
+    }
+
+    const bmp = await createImageBitmap(eqData);
+    this.setStations([{ t: [pos.x, pos.y, pos.z], q: [1, 0, 0, 0], image: 0, bytes: 0, w: eqW, h: eqH, name: 'Synthetic 360°' }], [0, 0, 0]);
+    this.enterBubble(0, bmp);
+  }
 
   // ------------------------------------------------------------ navigation
   setFly(on: boolean) {
