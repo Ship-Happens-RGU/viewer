@@ -251,14 +251,13 @@ export class Viewer {
     this.camera.position.set(40, -60, 45);
 
     this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.enableDamping = true; this.controls.dampingFactor = 0.1;
-    this.controls.screenSpacePanning = true; this.controls.zoomToCursor = true;
-    this.controls.minDistance = 0.05; this.controls.maxDistance = 5000;
-    this.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
-    this.controls.rotateSpeed = isTouch ? 0.6 : 0.9;
-    this.controls.addEventListener('change', () => this.touch());
+    this.controls.enabled = false;
+    this.controls.enableRotate = false;
+    this.controls.enableZoom = false;
+    this.controls.enablePan = false;
 
     this.fly = new Fly(this.camera, canvas, () => this.touch());
+    this.fly.enter();
 
     this.tc = new TransformControls(this.camera, canvas);
     this.tc.size = isTouch ? 1.1 : 0.8;
@@ -266,7 +265,8 @@ export class Viewer {
     this.overlay.add(this.tc.getHelper());
     this.tc.addEventListener('dragging-changed', (e: any) => {
       this.gizmoBusy = !!e.value;
-      if (!this.fly.enabled) this.controls.enabled = !e.value;
+      this.controls.enabled = false;
+      if (e.value) this.fly.exit(); else if (this.tool !== 'segment') this.fly.enter();
       if (this.modelGizmo && this.proxy) {
         if (e.value) { this.dragBase = this.cells.model.clone(); this.proxy.updateMatrixWorld(true); this.dragFrom.copy(this.proxy.matrixWorld); }
         else { const base = this.dragBase; this.dragBase = null; this.retightenBounds(); this.recentreProxy(); if (base) this.onModelDrag?.(true, base); }
@@ -956,9 +956,9 @@ export class Viewer {
   get measureList() { return this.measures.map(m => ({ a: m.a, b: m.b, dist: m.dist })); }
   setTool(t: Tool) {
     this.tool = t;
-    // a lasso needs the pointer for drawing, so orbiting stands down while it is armed
-    // Placement keeps the orbit alive: you look around for the thing you want, then click it.
-    this.controls.enabled = t !== 'segment' && !this.fly.enabled && !this.bubble;
+    this.controls.enabled = false;
+    if (t === 'segment') this.fly.exit();
+    else if (!this.fly.enabled) this.fly.enter();
     if (t !== 'measure') { this.pending = null; if (this.pendingMark) { this.overlay.remove(this.pendingMark); this.pendingMark = null; } } this.dirty = true; }
 
   // ------------------------------------------------------------ stations / bubbles
@@ -994,18 +994,20 @@ export class Viewer {
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(50, 64, 40), mat); mesh.position.copy(sp.position);
     this.panoScene.add(mesh);
     this.bubble = { index, pos: sp.position.clone(), mesh, mat };
-    this.setFly(false);
+    this.controls.enabled = false;
     const f = new THREE.Vector3(); this.camera.getWorldDirection(f);
     this.camera.position.copy(sp.position); this.controls.target.copy(sp.position).addScaledVector(f, 0.02);
-    this.controls.minDistance = 0.02; this.controls.zoomToCursor = false; this.controls.update();
+    this.camera.lookAt(this.controls.target);
+    this.fly.enter();
     this.edlMat.uniforms.uPointAlpha.value = this.pointAlpha;
     this.touch();
   }
   exitBubble() {
     if (!this.bubble) return;
     this.panoScene.remove(this.bubble.mesh); (this.bubble.mat.uniforms.uTex.value as THREE.Texture).dispose(); this.bubble = null;
-    this.edlMat.uniforms.uPointAlpha.value = 1; this.controls.minDistance = 0.05; this.controls.zoomToCursor = true;
-    const f = new THREE.Vector3(); this.camera.getWorldDirection(f); this.controls.target.copy(this.camera.position).addScaledVector(f, 3); this.controls.update();
+    this.edlMat.uniforms.uPointAlpha.value = 1; this.controls.enabled = false;
+    const f = new THREE.Vector3(); this.camera.getWorldDirection(f); this.controls.target.copy(this.camera.position).addScaledVector(f, 3);
+    this.fly.enter();
     this.onBubbleExit?.(); this.touch();
   }
   setPointAlpha(a: number) { this.pointAlpha = a; if (this.bubble) { this.edlMat.uniforms.uPointAlpha.value = a; this.dirty = true; } }
