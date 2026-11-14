@@ -10,7 +10,17 @@ import { sniffMesh, parseMesh, meshToStl, MESH_EXT } from '../shared/meshio.mjs'
 import { measureMesh, flipMesh, smoothMesh, decimateMesh, samplePoints, recomputeNormals, type MeshMeasure } from './meshops';
 import type { MeshData } from './meshview';
 
-const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+const _missingEls = new Map<string, HTMLElement>();
+const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
+  const el = document.getElementById(id);
+  if (el) return el as T;
+  let stub = _missingEls.get(id);
+  if (!stub) {
+    stub = document.createElement('select');
+    _missingEls.set(id, stub);
+  }
+  return stub as T;
+};
 const fmt = (n: number) => Math.round(n).toLocaleString();
 const mb = (b: number) => b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6).toFixed(0)} MB`;
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -534,6 +544,7 @@ function drawHistogram() {
   g.fillStyle = '#30aedb66'; g.fillRect(knobs.iMin * w, 0, Math.max(1, (knobs.iMax - knobs.iMin) * w), h);
 }
 function syncZLabels() {
+  if (!document.getElementById('k-zmin')) { knobs.clipZMin = -1e9; knobs.clipZMax = 1e9; return; }
   const b = viewer.bounds(); if (b.isEmpty()) return;
   const lo = b.min.z + Number($<HTMLInputElement>('k-zmin').value) * (b.max.z - b.min.z), hi = b.min.z + Number($<HTMLInputElement>('k-zmax').value) * (b.max.z - b.min.z);
   knobs.clipZMin = lo; knobs.clipZMax = hi; $('v-zmin').textContent = lo.toFixed(1); $('v-zmax').textContent = hi.toFixed(1);
@@ -4422,7 +4433,7 @@ addEventListener('beforeunload', e => {
 (function deviceDefaults() {
   const load = $<HTMLSelectElement>('k-load'), budget = $<HTMLSelectElement>('k-budget');
   if (small) { load.value = '10'; budget.value = '1000000'; } else if (isTouch) { load.value = '4'; budget.value = '2000000'; } else { load.value = '1'; budget.value = '8000000'; }
-  knobs.budget = Number(budget.value);
+  knobs.budget = Number(budget.value) || (small ? 1_000_000 : isTouch ? 2_000_000 : 8_000_000);
   if (isTouch) {
     $('drop-lede').textContent = 'Pick a scan from Files. Nothing is uploaded — it is read straight off your device.';
     $('drop-hint').textContent = '.e57 · .ply · .las · large files stay on device';
