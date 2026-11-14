@@ -262,7 +262,6 @@ async function openFile(f: File, handle: any = null, add = false, compare = fals
   if (has.has) {
     fromCache = true;
     $('ld-stat').textContent = 'loading from cache…';
-    activeLoadProgressCb?.(1);
     io.postMessage({ type: 'cache-read', key: cacheKey });
     return;
   }
@@ -278,7 +277,6 @@ async function openFile(f: File, handle: any = null, add = false, compare = fals
   if (cachedMatch) {
     fromCache = true;
     $('ld-stat').textContent = `loading cached cells (${fmt(cachedMatch.points)} pts)…`;
-    activeLoadProgressCb?.(1);
     io.postMessage({ type: 'cache-read', key: cachedMatch.key });
     return;
   }
