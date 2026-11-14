@@ -1107,10 +1107,9 @@ export class Viewer {
   }
 
   // ------------------------------------------------------------ navigation
-  setFly(on: boolean) {
-    if (on === this.fly.enabled) return;
-    if (on) { if (this.bubble) this.exitBubble(); this.controls.enabled = false; this.fly.enter(); }
-    else { this.fly.exit(); const f = new THREE.Vector3(); this.camera.getWorldDirection(f); this.controls.target.copy(this.camera.position).addScaledVector(f, 3); this.controls.enabled = true; this.controls.update(); }
+  setFly(_on: boolean) {
+    this.controls.enabled = false;
+    if (!this.fly.enabled && this.tool !== 'segment') this.fly.enter();
     this.touch();
   }
   private viewDir(bb: THREE.Box3): THREE.Vector3 {
@@ -1136,7 +1135,9 @@ export class Viewer {
     const worldPerPx = (2 * dist * tanV) / this.ch;
     if (occR) { const s = (occR / 2) * worldPerPx; this.controls.target.addScaledVector(right, s); this.camera.position.addScaledVector(right, s); }
     if (occB) { const s = (occB / 2) * worldPerPx; this.controls.target.addScaledVector(up, -s); this.camera.position.addScaledVector(up, -s); }
-    this.controls.update(); this.touch();
+    this.camera.lookAt(this.controls.target);
+    if (!quiet && this.tool !== 'segment') this.fly.enter();
+    this.touch();
   }
   topDown() {
     const bb = this.visibleBounds(); if (bb.isEmpty()) return;
@@ -1156,7 +1157,9 @@ export class Viewer {
     const t = this.controls.target; const d = distance ?? this.camera.position.distanceTo(t);
     const az = azDeg * Math.PI / 180, el = elDeg * Math.PI / 180;
     this.camera.position.set(t.x + d * Math.cos(el) * Math.cos(az), t.y + d * Math.cos(el) * Math.sin(az), t.z + d * Math.sin(el));
-    this.controls.update(); this.touch();
+    this.camera.lookAt(this.controls.target);
+    if (!quiet && this.tool !== 'segment') this.fly.enter();
+    this.touch();
   }
   getView() { return { p: this.camera.position.toArray(), t: this.controls.target.toArray(), fly: this.fly.enabled }; }
   setView(v: { p: number[]; t: number[] }) { this.setFly(false); this.exitBubble(); this.camera.position.fromArray(v.p); this.controls.target.fromArray(v.t); this.controls.update(); this.touch(); }
