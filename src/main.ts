@@ -59,7 +59,7 @@ const knobs: Knobs = {
   colorMode: 0, size: 2.5, sizeMode: 1, round: true, maxPx: 12,
   edl: true, edlStrength: 0.32, edlRadius: 1.4, normalShade: false,
   bright: 1, gamma: 1, iMin: 0, iMax: 1, clipZMin: -1e9, clipZMax: 1e9,
-  budget: 16_000_000, density: 2.5, movingQuality: 0.4, flySpeed: 2,
+  budget: 16_000_000, density: 2.5, movingQuality: 0.4, flySpeed: 12,
 };
 
 // ------------------------------------------------------------- the active entity

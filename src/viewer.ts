@@ -68,7 +68,7 @@ class Fly {
   keys = new Set<string>();
   yaw = 0; pitch = 0;
   private dragging = false; private lx = 0; private ly = 0;
-  speed = 2.0;
+  speed = 12.0;
   private cam: THREE.PerspectiveCamera;
   constructor(cam: THREE.PerspectiveCamera, el: HTMLElement, onMove: () => void) {
     this.cam = cam;
