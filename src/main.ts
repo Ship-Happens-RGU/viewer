@@ -17,6 +17,8 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   let stub = _missingEls.get(id);
   if (!stub) {
     stub = document.createElement('select');
+    const parent = document.createElement('div');
+    parent.appendChild(stub);
     _missingEls.set(id, stub);
   }
   return stub as T;
@@ -563,7 +565,8 @@ function setColorMode(c: number) {
   knobs.colorMode = c; sel.value = String(c); push();
 }
 function bindRange(id: string, label: string, apply: (v: number) => void, digits = 2) {
-  const el = $<HTMLInputElement>(id);
+  const el = document.getElementById(id) as HTMLInputElement | null;
+  if (!el) return;
   const on = () => { const v = Number(el.value); apply(v); const l = document.getElementById(label); if (l) l.textContent = v.toFixed(digits); push(); };
   el.addEventListener('input', on); on();
 }
