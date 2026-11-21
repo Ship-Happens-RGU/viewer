@@ -3362,7 +3362,7 @@ $('k-meshsval').addEventListener('change', e => { meshSettings.sampleVal = Math.
 syncMeshOpLabels();
 
 /** Does this file hold triangles? A PLY can be either, and the header says which. */
-function looksLikeMesh(name: string, head: Uint8Array): 'ply' | 'obj' | 'stl' | null {
+function looksLikeMesh(name: string, head: Uint8Array): 'ply' | 'obj' | 'stl' | 'glb' | null {
   const k = sniffMesh(name, head);
   if (k !== 'ply') return k;
   const text = new TextDecoder('latin1').decode(head);
@@ -3382,7 +3382,7 @@ async function importMesh(f: File): Promise<Entity | null> {
     const buf = await f.arrayBuffer();
     const head = new Uint8Array(buf, 0, Math.min(65536, buf.byteLength));
     const kind = sniffMesh(f.name, head);
-    if (!kind) throw new Error(`${f.name} is not a mesh e57view reads. It takes PLY, OBJ and STL.`);
+    if (!kind) throw new Error(`${f.name} is not a mesh e57view reads. It takes PLY, OBJ, STL and GLB.`);
     const raw = parseMesh(kind, buf);
     const nv = raw.pos.length / 3;
     const data: MeshData = {

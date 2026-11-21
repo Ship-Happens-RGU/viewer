@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Reading and writing triangle meshes: PLY, OBJ, STL.
+// Reading and writing triangle meshes: PLY, OBJ, STL, and reading glTF binary (GLB).
 //
 // Separate from importers.mjs because a mesh is not a cloud: the cloud importers stream
 // millions of points through a callback and never hold the file, while a mesh has to be held
@@ -15,6 +15,7 @@ const dec = (b) => new TextDecoder('latin1').decode(b);
 export function sniffMesh(name, head) {
   const ext = (name.split('.').pop() || '').toLowerCase();
   const t = dec(head.subarray(0, 80));
+  if (t.startsWith('glTF')) return 'glb';
   if (/^ply\s/.test(t)) return 'ply';
   if (ext === 'obj') return 'obj';
   if (ext === 'stl') return 'stl';
@@ -23,7 +24,7 @@ export function sniffMesh(name, head) {
   return null;
 }
 
-export const MESH_EXT = ['ply', 'obj', 'stl'];
+export const MESH_EXT = ['ply', 'obj', 'stl', 'glb'];
 
 const PLY_SIZES = { char: 1, uchar: 1, int8: 1, uint8: 1, short: 2, ushort: 2, int16: 2, uint16: 2, int: 4, uint: 4, int32: 4, uint32: 4, float: 4, float32: 4, double: 8, float64: 8 };
 
@@ -272,7 +273,7 @@ function parseStlMesh(buf) {
 /** Read a mesh file. Positions come back in float32 relative to `origin`, which is the
  *  rounded minimum corner — a survey-coordinate mesh keeps its millimetres that way. */
 export function parseMesh(kind, buf) {
-  const m = kind === 'ply' ? parsePlyMesh(buf) : kind === 'obj' ? parseObjMesh(buf) : parseStlMesh(buf);
+  const m = kind === 'glb' ? parseGlbMesh(buf) : kind === 'ply' ? parsePlyMesh(buf) : kind === 'obj' ? parseObjMesh(buf) : parseStlMesh(buf);
   const nv = m.pos.length / 3;
   if (!nv) throw new Error('that file has no vertices');
   if (!m.idx.length) throw new Error('that file has no triangles — it is a point cloud, not a mesh (open it as a layer instead)');
@@ -293,6 +294,162 @@ export function parseMesh(kind, buf) {
   }
   const idx = keep.length === m.idx.length ? m.idx : Uint32Array.from(keep);
   return { pos, nrm: m.nrm, col: m.col, idx, origin, badIndices: bad };
+}
+
+// ---------------------------------------------------------------- GLB
+
+const GL_COMPONENTS = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
+// component type -> [byte size, max value for normalised integers]
+const GL_TYPES = { 5120: [1, 127], 5121: [1, 255], 5122: [2, 32767], 5123: [2, 65535], 5125: [4, 0], 5126: [4, 0] };
+
+/** Read an accessor into plain numbers (normalised integers come back as 0..1 / -1..1). */
+function readAccessor(gltf, bin, index) {
+  const acc = gltf.accessors[index];
+  if (acc.sparse) throw new Error('sparse glTF accessors are not supported');
+  const comps = GL_COMPONENTS[acc.type];
+  const [size, norm] = GL_TYPES[acc.componentType] || [];
+  if (!size || !comps) throw new Error(`unsupported glTF accessor (${acc.type}/${acc.componentType})`);
+  const out = new Float64Array(acc.count * comps);
+  if (acc.bufferView === undefined) return out;          // all zeros, per spec
+  const view = gltf.bufferViews[acc.bufferView];
+  if ((view.buffer ?? 0) !== 0) throw new Error('GLB files with external buffers are not supported');
+  const base = bin.byteOffset + (view.byteOffset || 0) + (acc.byteOffset || 0);
+  const stride = view.byteStride || comps * size;
+  const dv = new DataView(bin.buffer);
+  const get = {
+    5120: (o) => dv.getInt8(o), 5121: (o) => dv.getUint8(o), 5122: (o) => dv.getInt16(o, true),
+    5123: (o) => dv.getUint16(o, true), 5125: (o) => dv.getUint32(o, true), 5126: (o) => dv.getFloat32(o, true),
+  }[acc.componentType];
+  const scale = acc.normalized && norm ? 1 / norm : 1;
+  for (let i = 0; i < acc.count; i++) {
+    const o = base + i * stride;
+    for (let c = 0; c < comps; c++) out[i * comps + c] = Math.max(get(o + c * size) * scale, acc.normalized ? -1 : -Infinity);
+  }
+  return out;
+}
+
+/** Column-major 4x4 product a·b. */
+function mat4Mul(a, b) {
+  const o = new Array(16).fill(0);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+    let s = 0;
+    for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+    o[c * 4 + r] = s;
+  }
+  return o;
+}
+
+/** A node's local matrix, column-major, from `matrix` or translation/rotation/scale. */
+function nodeMatrix(n) {
+  if (n.matrix) return n.matrix.slice();
+  const [tx, ty, tz] = n.translation || [0, 0, 0];
+  const [x, y, z, w] = n.rotation || [0, 0, 0, 1];
+  const [sx, sy, sz] = n.scale || [1, 1, 1];
+  return [
+    (1 - 2 * (y * y + z * z)) * sx, (2 * (x * y + z * w)) * sx, (2 * (x * z - y * w)) * sx, 0,
+    (2 * (x * y - z * w)) * sy, (1 - 2 * (x * x + z * z)) * sy, (2 * (y * z + x * w)) * sy, 0,
+    (2 * (x * z + y * w)) * sz, (2 * (y * z - x * w)) * sz, (1 - 2 * (x * x + y * y)) * sz, 0,
+    tx, ty, tz, 1,
+  ];
+}
+
+const linearToSrgb8 = (v) => {
+  const c = Math.min(Math.max(v, 0), 1);
+  return Math.round((c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055) * 255);
+};
+
+/**
+ * Read a GLB's triangle primitives into one mesh. Node transforms are applied, then glTF's
+ * Y-up is turned back into the Z-up frame scans use. A ShipHappens model carries its scan's
+ * global shift in asset.extras.shiphappens.translation, added back here so the model lands
+ * exactly where its point cloud does.
+ */
+function parseGlbMesh(buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x46546c67) throw new Error('not a GLB file');
+  if (dv.getUint32(4, true) !== 2) throw new Error('only glTF 2.0 GLB files are supported');
+  let o = 12, gltf = null, bin = null;
+  while (o + 8 <= buf.byteLength) {
+    const len = dv.getUint32(o, true), type = dv.getUint32(o + 4, true);
+    if (type === 0x4e4f534a) gltf = JSON.parse(new TextDecoder('utf-8').decode(new Uint8Array(buf, o + 8, len)));
+    else if (type === 0x004e4942) bin = new Uint8Array(buf, o + 8, len);
+    o += 8 + len;
+  }
+  if (!gltf) throw new Error('the GLB has no JSON chunk');
+  bin = bin || new Uint8Array(buf, 0, 0);
+
+  // count first so the output arrays are allocated once (models run to millions of vertices)
+  const sceneIx = gltf.scene ?? 0;
+  const roots = gltf.scenes?.[sceneIx]?.nodes ?? (gltf.nodes || []).map((_, i) => i);
+  const draws = [];
+  const stack = roots.map((n) => [n, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]]);
+  while (stack.length) {
+    const [ni, parent] = stack.pop();
+    const node = gltf.nodes[ni];
+    const world = mat4Mul(parent, nodeMatrix(node));
+    for (const c of node.children || []) stack.push([c, world]);
+    if (node.mesh === undefined) continue;
+    for (const prim of gltf.meshes[node.mesh].primitives) {
+      if ((prim.mode ?? 4) !== 4) continue;                       // triangles only
+      if (prim.extensions?.KHR_draco_mesh_compression) throw new Error('Draco-compressed GLB files are not supported');
+      draws.push([prim, world]);
+    }
+  }
+  let nvTotal = 0, niTotal = 0;
+  for (const [prim] of draws) {
+    const nv = gltf.accessors[prim.attributes.POSITION].count;
+    nvTotal += nv;
+    niTotal += prim.indices !== undefined ? gltf.accessors[prim.indices].count : nv - (nv % 3);
+  }
+
+  const pos = new Float64Array(nvTotal * 3), nrm = new Float32Array(nvTotal * 3);
+  const col = new Uint8Array(nvTotal * 3).fill(200), idx = new Uint32Array(niTotal);
+  let anyColor = false, anyNormal = false, vBase = 0, iBase = 0;
+  for (const [prim, m] of draws) {
+    const p = readAccessor(gltf, bin, prim.attributes.POSITION);
+    const nv = p.length / 3;
+    const n = prim.attributes.NORMAL !== undefined ? readAccessor(gltf, bin, prim.attributes.NORMAL) : null;
+    const c = prim.attributes.COLOR_0 !== undefined ? readAccessor(gltf, bin, prim.attributes.COLOR_0) : null;
+    const cComps = c ? GL_COMPONENTS[gltf.accessors[prim.attributes.COLOR_0].type] : 3;
+    for (let i = 0; i < nv; i++) {
+      const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2], v = (vBase + i) * 3;
+      const wx = m[0] * x + m[4] * y + m[8] * z + m[12];
+      const wy = m[1] * x + m[5] * y + m[9] * z + m[13];
+      const wz = m[2] * x + m[6] * y + m[10] * z + m[14];
+      pos[v] = wx; pos[v + 1] = -wz; pos[v + 2] = wy;               // Y-up → Z-up
+      if (n) {
+        const a = n[i * 3], b = n[i * 3 + 1], d = n[i * 3 + 2];
+        const nx = m[0] * a + m[4] * b + m[8] * d, ny = m[1] * a + m[5] * b + m[9] * d, nz = m[2] * a + m[6] * b + m[10] * d;
+        const l = Math.hypot(nx, ny, nz) || 1;
+        nrm[v] = nx / l; nrm[v + 1] = -nz / l; nrm[v + 2] = ny / l;
+      }
+      if (c) {
+        col[v] = linearToSrgb8(c[i * cComps]); col[v + 1] = linearToSrgb8(c[i * cComps + 1]); col[v + 2] = linearToSrgb8(c[i * cComps + 2]);
+      }
+    }
+    if (n) anyNormal = true;
+    if (c) anyColor = true;
+    if (prim.indices !== undefined) {
+      const ix = readAccessor(gltf, bin, prim.indices);
+      for (let i = 0; i < ix.length; i++) idx[iBase + i] = ix[i] + vBase;
+      iBase += ix.length;
+    } else {
+      for (let i = 0; i < nv - (nv % 3); i++) idx[iBase++] = vBase + i;
+    }
+    vBase += nv;
+  }
+
+  const shift = gltf.asset?.extras?.shiphappens?.translation;
+  if (Array.isArray(shift) && shift.length >= 3 && shift.some((v) => v)) {
+    for (let i = 0; i < pos.length; i += 3) { pos[i] += shift[0]; pos[i + 1] += shift[1]; pos[i + 2] += shift[2]; }
+  }
+  return {
+    pos,
+    nrm: anyNormal ? nrm : new Float32Array(0),
+    col,                                   // grey where the file had no colours
+    hasColor: anyColor,
+    idx: idx.subarray(0, iBase),
+  };
 }
 
 // ---------------------------------------------------------------- writing
